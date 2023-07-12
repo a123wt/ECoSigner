@@ -1,0 +1,265 @@
+use std::collections::hash_map::{Entry, HashMap};
+use std::sync::{
+    atomic::{AtomicU16, Ordering},
+    Arc,
+};
+
+use colored::Colorize;
+use futures::Stream;
+use rocket::data::ToByteUnit;
+use rocket::http::Status;
+use rocket::request::{FromRequest, Outcome, Request};
+use rocket::response::stream::{stream, Event, EventStream};
+use rocket::serde::json::Json;
+use rocket::State;
+use serde::{Deserialize, Serialize};
+use tokio::sync::{Notify, RwLock};
+
+use rocket::tokio::sync::mpsc;
+
+#[rocket::get("/rooms/<room_id>/subscribe")]
+async fn subscribe(
+    db: &State<Db>,
+    mut shutdown: rocket::Shutdown,
+    last_seen_msg: LastEventId,
+    room_id: &str,
+) -> EventStream<impl Stream<Item = Event>> {
+    let room = db.get_room_or_create_empty(room_id).await;
+    let room_clone = Arc::clone(&room);
+    let mut subscription = room.subscribe(last_seen_msg.0);
+    EventStream::from(stream! {
+
+        // 创建一个通道，用于接收 SSE 连接断开的信号
+        let (_disconnect_tx, mut disconnect_rx) = mpsc::channel::<()>(1);
+    
+        // 启动一个异步任务来监听连接断开的信号
+        tokio::spawn(async move {
+            // 等待 SSE 连接断开的信号
+            let _ = disconnect_rx.recv().await;
+            
+            // 连接断开后的处理逻辑
+            // room_clone.leave();
+            println!(
+                "{}{}",
+                "Remote node left, current node number is ".yellow().bold(),
+                room_clone.subscribers.load(Ordering::Relaxed).to_string().bold()
+            );
+            
+        });
+
+
+        loop {
+            let (id, msg) = tokio::select! {
+                message = subscription.next() => message,
+                _ = &mut shutdown => return
+            };
+
+
+            yield Event::data(msg)
+                .event("new-message")
+                .id(id.to_string());
+
+        }
+    })
+}
+
+#[rocket::post("/rooms/<room_id>/issue_unique_idx")]
+async fn issue_idx(db: &State<Db>, room_id: &str) -> Json<IssuedUniqueIdx> {
+    let room = db.get_room_or_create_empty(room_id).await;
+    let idx = room.issue_unique_idx();
+
+    println!(
+        "{}{}",
+        "Remote node join, current node number is ".green().bold(),
+        room.subscribers.load(Ordering::Relaxed).to_string().bold()
+    );
+
+    Json::from(IssuedUniqueIdx { unique_idx: idx })
+}
+
+#[rocket::post("/rooms/<room_id>/broadcast", data = "<message>")]
+async fn broadcast(db: &State<Db>, room_id: &str, message: String) -> Status {
+    println!("{}", message);
+    let room = db.get_room_or_create_empty(room_id).await;
+    room.publish(message).await;
+    Status::Ok
+}
+
+struct Db {
+    rooms: RwLock<HashMap<String, Arc<Room>>>,
+}
+
+struct Room {
+    messages: RwLock<Vec<String>>,
+    message_appeared: Notify,
+    subscribers: AtomicU16,
+    next_idx: AtomicU16,
+}
+
+impl Db {
+    pub fn empty() -> Self {
+        Self {
+            rooms: RwLock::new(HashMap::new()),
+        }
+    }
+
+    pub async fn get_room_or_create_empty(&self, room_id: &str) -> Arc<Room> {
+        let rooms = self.rooms.read().await;
+        if let Some(room) = rooms.get(room_id) {
+            // If no one is watching this room - we need to clean it up first
+            if !room.is_abandoned() {
+                return room.clone();
+            }
+        }
+        drop(rooms);
+
+        let mut rooms = self.rooms.write().await;
+        match rooms.entry(room_id.to_owned()) {
+            Entry::Occupied(entry) if !entry.get().is_abandoned() => entry.get().clone(),
+            Entry::Occupied(entry) => {
+                let room = Arc::new(Room::empty());
+                *entry.into_mut() = room.clone();
+                room
+            }
+            Entry::Vacant(entry) => entry.insert(Arc::new(Room::empty())).clone(),
+        }
+    }
+}
+
+impl Room {
+    pub fn empty() -> Self {
+        Self {
+            messages: RwLock::new(vec![]),
+            message_appeared: Notify::new(),
+            subscribers: AtomicU16::new(0),
+            next_idx: AtomicU16::new(1),
+        }
+    }
+
+    pub async fn publish(self: &Arc<Self>, message: String) {
+        let mut messages = self.messages.write().await;
+        messages.push(message);
+        self.message_appeared.notify_waiters();
+    }
+
+    pub fn subscribe(self: Arc<Self>, last_seen_msg: Option<u16>) -> Subscription {
+        self.subscribers.fetch_add(1, Ordering::SeqCst);
+        Subscription {
+            room: self,
+            next_event: last_seen_msg.map(|i| i + 1).unwrap_or(0),
+        }
+    }
+
+    pub fn is_abandoned(&self) -> bool {
+        self.subscribers.load(Ordering::SeqCst) == 0
+    }
+
+    pub fn issue_unique_idx(&self) -> u16 {
+        self.next_idx.fetch_add(1, Ordering::Relaxed)
+    }
+
+    // pub fn leave(&self){
+    //     self.subscribers.fetch_sub(1, Ordering::SeqCst);
+    // }
+}
+
+struct Subscription {
+    room: Arc<Room>,
+    next_event: u16,
+}
+
+impl Subscription {
+    pub async fn next(&mut self) -> (u16, String) {
+        loop {
+            let history = self.room.messages.read().await;
+            if let Some(msg) = history.get(usize::from(self.next_event)) {
+                let event_id = self.next_event;
+                self.next_event = event_id + 1;
+                return (event_id, msg.clone());
+            }
+            let notification = self.room.message_appeared.notified();
+            drop(history);
+            notification.await;
+        }
+    }
+}
+
+impl Drop for Subscription {
+    fn drop(&mut self) {
+        self.room.subscribers.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Represents a header Last-Event-ID
+struct LastEventId(Option<u16>);
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for LastEventId {
+    type Error = &'static str;
+
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let header = request
+            .headers()
+            .get_one("Last-Event-ID")
+            .map(|id| id.parse::<u16>());
+        match header {
+            Some(Ok(last_seen_msg)) => Outcome::Success(LastEventId(Some(last_seen_msg))),
+            Some(Err(_parse_err)) => {
+                Outcome::Failure((Status::BadRequest, "last seen msg id is not valid"))
+            }
+            None => Outcome::Success(LastEventId(None)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct IssuedUniqueIdx {
+    unique_idx: u16,
+}
+
+// // 需要rocket manage之后 中attach      // .attach(MyFairing)
+// use rocket::fairing::{Fairing, Info, Kind};
+// struct MyFairing;
+// #[rocket::async_trait]
+// impl Fairing for MyFairing {
+//     fn info(&self) -> Info {
+//         Info {
+//             name: "My Custom Fairing",
+//             kind: Kind::Request | Kind::Response |Kind::Shutdown
+//         }
+//     }
+//     async fn on_request(&self, request: &mut Request<'_>, _: &mut rocket::Data<'_>) {
+//         println!("new request======================: {:?}",request.client_ip());
+//     }
+//     async fn on_response<'r>(&self,_request: &'r rocket::Request<'_>, response: &mut rocket::Response<'r>){
+//         println!("resopnse=============={:?}",response)
+//     }
+
+//     async fn on_shutdown(&self,_: &rocket::Rocket<rocket::Orbit>){
+//         println!("shutdown===================");
+//     }
+
+// }
+
+// // 需要rocket manage 之前中resigter   //.register("/", rocket::catchers![sse_stream_closed])
+// #[rocket::catch(500)]
+// fn sse_closed()  {
+
+//     println!("{}","Remote leave, current subscribers is ".yellow())
+// }
+
+pub async fn gg20_sm_manager(port: i32) -> Result<(), Box<dyn std::error::Error>> {
+    let figment = rocket::Config::figment()
+        .merge((
+            "limits",
+            rocket::data::Limits::new().limit("string", 100.megabytes()),
+        ))
+        .merge(("port", port));
+
+    rocket::custom(figment)
+        .mount("/", rocket::routes![subscribe, issue_idx, broadcast])
+        .manage(Db::empty())
+        .launch()
+        .await?;
+    Ok(())
+}
