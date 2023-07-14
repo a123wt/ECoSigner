@@ -13,9 +13,17 @@ use rocket::response::stream::{stream, Event, EventStream};
 use rocket::serde::json::Json;
 use rocket::State;
 use serde::{Deserialize, Serialize};
+use structopt::StructOpt;
 use tokio::sync::{Notify, RwLock};
 
 use rocket::tokio::sync::mpsc;
+
+
+#[derive(Debug, StructOpt)]
+pub struct Cli {
+    #[structopt(short, long, default_value = "8000")]
+    port: i32
+}
 
 #[rocket::get("/rooms/<room_id>/subscribe")]
 async fn subscribe(
@@ -28,6 +36,7 @@ async fn subscribe(
     let room_clone = Arc::clone(&room);
     let mut subscription = room.subscribe(last_seen_msg.0);
     EventStream::from(stream! {
+        
 
         // 创建一个通道，用于接收 SSE 连接断开的信号
         let (_disconnect_tx, mut disconnect_rx) = mpsc::channel::<()>(1);
@@ -60,7 +69,7 @@ async fn subscribe(
                 .id(id.to_string());
 
         }
-    })
+    }).heartbeat(std::time::Duration::from_secs(5))
 }
 
 #[rocket::post("/rooms/<room_id>/issue_unique_idx")]
@@ -248,7 +257,8 @@ struct IssuedUniqueIdx {
 //     println!("{}","Remote leave, current subscribers is ".yellow())
 // }
 
-pub async fn gg20_sm_manager(port: i32) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn gg20_sm_manager(args:Cli) -> Result<(), Box<dyn std::error::Error>> {
+    let port=args.port;
     let figment = rocket::Config::figment()
         .merge((
             "limits",

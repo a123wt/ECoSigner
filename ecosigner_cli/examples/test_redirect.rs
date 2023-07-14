@@ -2,7 +2,7 @@ use tokio::{process::Command};
 use tokio::io::{AsyncBufReadExt, BufReader,BufWriter,AsyncWriteExt};
 use std::io::Write;
 
-
+// 测试使用子进程执行命令并重定向输入输出
 async fn run_command() -> std::io::Result<tokio::process::Child> {
     let mut child=Command::new("/root/mytauri/src-tauri/target/debug/examples/cli_sm_manager")
         // .arg("Hello, World!")
@@ -46,6 +46,8 @@ async fn run_command() -> std::io::Result<tokio::process::Child> {
     Ok(child)
 }
 
+
+// 测试子进程的处理
 #[tokio::main]
 async fn main() {
     // run_command().await;
@@ -66,13 +68,7 @@ async fn main() {
     }
 }
 
-async fn child_process(){
-    let (sender, mut receiver) = mpsc::channel(100);
-    let task=tokio::spawn(async move{
-        async_print(sender).await
-    });
-    task.
-}
+
 
 
 

@@ -30,3 +30,20 @@ round-based = { version = "0.1.4", features = ["dev"] }
 curv-kzen = { version = "0.9", default-features = false }
 colored = "2.0.4"
 ansi_term = "0.12.1"
+openssl = "0.10.55"
+
+[[bin]]
+name="cli_sm_manager"
+path="./src/bin/cli_sm_manager.rs"
+
+[[bin]]
+name="cli_keygen"
+path="./src/bin/cli_keygen.rs"
+
+[[bin]]
+name="cli_signing"
+path="./src/bin/cli_signing.rs"
+
+[[bin]]
+name="node"
+path="./src/bin/mpe_node"

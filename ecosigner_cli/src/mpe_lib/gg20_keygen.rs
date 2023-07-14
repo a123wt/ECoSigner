@@ -9,26 +9,26 @@ use round_based::async_runtime::AsyncProtocol;
 use super::gg20_sm_client;
 use gg20_sm_client::join_computation;
 
-#[derive(Debug, StructOpt)]
-struct Cli {
+#[derive(Debug, StructOpt,Clone)]
+pub struct Cli {
     #[structopt(short, long, default_value = "http://localhost:8000/")]
-    address: surf::Url,
+    pub address: surf::Url,
     #[structopt(short, long, default_value = "default-keygen")]
-    room: String,
+    pub room: String,
     #[structopt(short, long)]
-    output: PathBuf,
+    pub output: PathBuf,
 
     #[structopt(short, long)]
-    index: u16,
+    pub index: u16,
     #[structopt(short, long)]
-    threshold: u16,
+    pub threshold: u16,
     #[structopt(short, long)]
-    number_of_parties: u16,
+    pub number_of_parties: u16,
 }
 
 
-pub async fn gg20_keygen() -> Result<()> {
-    let args: Cli = Cli::from_args();
+pub async fn gg20_keygen(args:Cli) -> Result<()> {
+    // let args: Cli = Cli::from_args();
     let mut output_file = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
