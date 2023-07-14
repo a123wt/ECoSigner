@@ -251,7 +251,7 @@ async fn invoke_gg20_dkg(
         args_dkg.room.clone()
     );
 
-    let result = gg20_keygen::gg20_keygen(args_dkg).await.map(op);
+    let result = gg20_keygen::gg20_keygen(args_dkg).await;
     result
 }
 
