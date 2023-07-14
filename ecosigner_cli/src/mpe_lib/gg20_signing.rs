@@ -1,12 +1,17 @@
+// use std::io::Write;
+// use std::ops::Add;
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Context, Result};
+use curv::elliptic::curves::Scalar;
 use futures::{SinkExt, StreamExt, TryStreamExt};
+use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::party_i::SignatureRecid;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use curv::arithmetic::Converter;
 use curv::BigInt;
+use curv::elliptic::curves::Secp256k1;
 
 use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::state_machine::sign::{
     OfflineStage, SignManual,
@@ -17,11 +22,11 @@ use round_based::Msg;
 use super::gg20_sm_client;
 use gg20_sm_client::join_computation;
 
+
 use openssl::base64;
 
-
-#[derive(Debug, StructOpt,Clone, Serialize, Deserialize)]
-pub enum InputDataType {
+#[derive(Debug, StructOpt, Clone, Serialize, Deserialize)]
+pub enum DataType {
     #[structopt(name="utf8",about="decode input from Utf8")]
     Utf8,
     #[structopt(name="base64",about="decode input from Base64")]
@@ -30,14 +35,14 @@ pub enum InputDataType {
     Vector,
 }
 
-impl std::str::FromStr for InputDataType {
+impl std::str::FromStr for DataType {
     type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self,String> {
         match s {
-            "utf8" => Ok(InputDataType::Utf8),
-            "base64" => Ok(InputDataType::Base64),
-            "Vector" => Ok(InputDataType::Vector),
+            "utf8" => Ok(DataType::Utf8),
+            "base64" => Ok(DataType::Base64),
+            "Vector" => Ok(DataType::Vector),
             _ => Err(format!("Invalid input data type: {}", s)),
         }
     }
@@ -46,7 +51,7 @@ impl std::str::FromStr for InputDataType {
 
 
 
-#[derive(Debug, StructOpt,Clone)]
+#[derive(Debug, StructOpt,Clone, Serialize, Deserialize)]
 pub struct Cli {
     #[structopt(short, long, default_value = "http://localhost:8000/")]
     pub address: surf::Url,
@@ -60,15 +65,25 @@ pub struct Cli {
     #[structopt(short, long)]
     pub data_to_sign: String,
 
-    #[structopt(short,long,possible_values =  &["utf8", "base64", "vector"],default_value="Utf8")]
-    pub input_data_type:InputDataType,
+    #[structopt(short,long,possible_values =  &["Utf8", "Base64", "Vector"],default_value="Utf8")]
+    pub input_data_type:DataType,
 
+    #[structopt(short,long,possible_values =  &["Base64", "Vector"],default_value="Base64")]
+    pub output_data_type:DataType,
 }
 
+// async fn main() -> Result<()> {
+//     let args: Cli = Cli::from_args();
+//     let res = match gg20_signing(args) { //此处match就是?的实现方法。
+//         Ok(res) => res,
+//         Err(e) => return Err(e), //std::ops::Try会自动做Err type 转换。
+//         };
+//     println!("{:?}", res);
+//     Ok(())
+// }
 
-pub async fn gg20_signing(args:Cli) -> Result<String> {
-    let args_clone=args.clone();
-    
+async fn gg20_signing_original(args:Cli) -> Result<String> {
+    let args_clone = args.clone();
     let local_share = tokio::fs::read(args.local_share)
         .await
         .context("cannot read local share")?;
@@ -97,10 +112,15 @@ pub async fn gg20_signing(args:Cli) -> Result<String> {
     tokio::pin!(incoming);
     tokio::pin!(outgoing);
 
-    // let tobesigned=process_data_to_sign(&&args_clone)?;
+//加了这两行之后从对字符串签名变成了给以字符串为名的文件内容签名 
+    // let file_content_b64 = fs::read_to_string(&args.data_to_sign).expect("fail");
+    // let decode_file = util::decode(&file_content_b64);
 
+    let data_to_sign=process_data_to_sign(&args_clone).unwrap();
+
+//data_tosign和decode_file的区别
     let (signing, partial_signature) = SignManual::new(
-        BigInt::from_bytes(args.data_to_sign.as_bytes()),
+        BigInt::from_bytes(&data_to_sign),
         completed_offline_stage,
     )?;
 
@@ -111,7 +131,7 @@ pub async fn gg20_signing(args:Cli) -> Result<String> {
             body: partial_signature,
         })
         .await?;
-
+    
     let partial_signatures: Vec<_> = incoming
         .take(number_of_parties - 1)
         .map_ok(|msg| msg.body)
@@ -121,32 +141,80 @@ pub async fn gg20_signing(args:Cli) -> Result<String> {
         .complete(&partial_signatures)
         .context("online stage failed")?;
     let signature = serde_json::to_string(&signature).context("serialize signature")?;
-    println!("{}", signature);
 
     Ok(signature)
+
+    //let sigii = signature.r;
+    //let sig = process_signed_data(signature, args.input_data_type);
+   
+
+    //println!("{:?}", sig);
+    //let mut file_path = args.data_to_sign.add(".signed");
+    //let mut file = File::create(file_path).expect("fail to create!");
+
+    // 将内容写入文件
+    //file.write_all(sig_b64.as_bytes()).expect("fail to write!");
+
+    //println!("{:?}", r_str_vec);
+    // println!("{}", sig_s);
+    // println!("{}", s);
+
 }
 
-fn process_data_to_sign(args: &Cli)->Result<Vec<u8>>{
+fn process_data_to_sign(args: &Cli)->Result<Vec<u8>,String>{
     match args.input_data_type {
-        InputDataType::Utf8=>{
-            return Ok(args.data_to_sign.as_bytes().to_vec())
+        DataType::Utf8=>{
+            Ok(args.data_to_sign.as_bytes().to_vec())
         },
-        InputDataType::Base64=>{
-            return Ok(base64::decode_block(&args.data_to_sign)?)
+        DataType::Base64=>{       
+            base64::decode_block(&args.data_to_sign).map_err(|e| e.to_string())
         },
-        InputDataType::Vector=>{
-            Ok(serde_json::from_str::<Vec<u8>>(&args.data_to_sign)?)
+        DataType::Vector=>{
+            serde_json::from_str::<Vec<u8>>(&args.data_to_sign).map_err(|e| e.to_string())
         },
-        _ =>{
-            return Err(anyhow::Error::msg("wrong type of input data") )
-        }
+        // _ =>{
+        //     Err( "wrong type of input data".to_string() )
+        // }
     }
 }
 
-// async fn process_localshare(args: &Cli)->Result<Vec<u8>,String>{
-//     let local_share = tokio::fs::read(args.local_share)
-//         .await
-//         .context("cannot read local share")?;
-//     let local_share = serde_json::from_slice(&local_share).context("parse local share")?;
-//     return local_share;
+fn process_signed_data(signed_data : String, output_data_type : DataType) -> Result<String> {
+    let signed_data :SignatureRecid= serde_json::from_str(&signed_data)?;
+    let vec_r = scalar_to_vec(signed_data.r);
+    let vec_s = scalar_to_vec(signed_data.s);
+    let sig_vec: Vec<u8> = vec_r.into_iter().chain(vec_s.into_iter()).collect();
+    match output_data_type {
+
+        DataType::Base64=>{       
+            Ok(base64::encode_block(&sig_vec))
+        },
+        DataType::Vector=>{
+            Ok(format!("{:?}",sig_vec))
+        },
+        _ =>{
+            Err( anyhow!("wrong type of input data"))
+        }
+        
+    }
+}
+
+fn scalar_to_vec(signed_data : Scalar<Secp256k1>) -> Vec<u8> {
+    let sub_sig = serde_json::to_string(&signed_data).context("serialize signature").unwrap();
+    let sub_serial = String::from(&sub_sig[31..&sub_sig.len()-2]);
+    let vec_str: Vec<u8> = sub_serial.split(',').map(|s|String::from(s).parse().unwrap()).collect();
+    return vec_str;
+}
+// fn merge_sig_to_b64(sig_r : String,sig_s : String) -> String {
+//     let vec_r = scalar_to_vec(sig_r);
+//     let vec_s = scalar_to_vec(sig_s);
+//     let sig_vec: Vec<u8> = vec_r.into_iter().chain(vec_s.into_iter()).collect();
+//     let sig_b64 = encode(sig_vec);
+//     return sig_b64;
 // }
+
+pub async fn gg20_signing(args:Cli) -> Result<String> {
+    let sig = gg20_signing_original(args.clone()).await?;
+    let sig_str = process_signed_data(sig, args.output_data_type)?;
+    // println!("{:?}",sig_str);
+    Ok(sig_str)
+}

@@ -50,7 +50,7 @@ async fn subscribe(
             // room_clone.leave();
             println!(
                 "{}{}",
-                "Remote node left, current node number is ".yellow().bold(),
+                "Connection close, the index of subscriber is ".yellow().bold(),
                 room_clone.subscribers.load(Ordering::Relaxed).to_string().bold()
             );
             
@@ -69,7 +69,7 @@ async fn subscribe(
                 .id(id.to_string());
 
         }
-    }).heartbeat(std::time::Duration::from_secs(5))
+    }).heartbeat(std::time::Duration::from_secs(8))
 }
 
 #[rocket::post("/rooms/<room_id>/issue_unique_idx")]
@@ -79,7 +79,7 @@ async fn issue_idx(db: &State<Db>, room_id: &str) -> Json<IssuedUniqueIdx> {
 
     println!(
         "{}{}",
-        "Remote node join, current node number is ".green().bold(),
+        "Remote node join, the index of subscriber is ".green().bold(),
         room.subscribers.load(Ordering::Relaxed).to_string().bold()
     );
 

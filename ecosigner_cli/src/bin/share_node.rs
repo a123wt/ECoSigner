@@ -1,11 +1,9 @@
-use std::env::args;
 
 use colored::Colorize;
 use ecosigner_cli::mpe_lib::gg20_keygen;
 use ecosigner_cli::mpe_lib::gg20_signing;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use serde_json::error;
 use structopt::StructOpt;
 use surf;
 use tokio;
@@ -14,7 +12,7 @@ use tokio::net::TcpListener;
 use anyhow::Result;
 
 #[derive(Debug, StructOpt, Clone)]
-#[structopt(name="Multi-party Ecdsa Node")]
+#[structopt(name="Share Node")]
 struct Cli {
     #[structopt(short, long, default_value = "1")]
     index: u16,
@@ -30,7 +28,7 @@ struct Cli {
 struct SigningRequest {
     tobesigned: String,
     parties: Vec<u16>,
-    input_data_type: gg20_signing::InputDataType,
+    input_data_type: gg20_signing::DataType,
     request_index: String,
     authinfo: String,
 }
@@ -41,6 +39,12 @@ struct DKGRequest {
     number_of_parties: u16,
     request_index: String,
     authinfo: String,
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct NodeResponse{
+    request_index:String,
+    is_success:String,
+    data:String,
 }
 
 #[tokio::main]
@@ -99,7 +103,8 @@ fn pre_config_signing(args: Cli) -> gg20_signing::Cli {
         local_share: std::path::PathBuf::from(path),
         parties: vec![0 as u16],                  // change as signing request
         data_to_sign: "To Be Signed".to_string(), // change as signing request
-        input_data_type: gg20_signing::InputDataType::Utf8, // change as signing request
+        input_data_type: gg20_signing::DataType::Base64, // change as signing request
+        output_data_type:gg20_signing::DataType::Base64,
     }
 }
 
@@ -129,7 +134,7 @@ async fn listen_DKG(port: i32, config: gg20_keygen::Cli) {
             let parsed_request: Result<DKGRequest, serde_json::Error> =
                 serde_json::from_str(&request);
 
-            // Handle the signing request
+            // Handle the dkg request
             if let Err(error) = parsed_request {
                 // If parse json wrong, response error and return
                 eprintln!("Failed to parse DKG request: {}", error);
@@ -152,7 +157,7 @@ async fn listen_DKG(port: i32, config: gg20_keygen::Cli) {
             }
             println!("{}{}", "    >> Authentication result: ", "True".green());
 
-            // Call gg20_signing_base64 to sign the message
+            // Call gg20_dkg
             let result = invoke_gg20_dkg(&config_clone, parsed_request).await;
 
             // Prepare the response
@@ -225,8 +230,8 @@ async fn listen_signing(port: i32, config: gg20_signing::Cli) {
             }
             println!("{}{}", "    >> Authentication result: ", "True".green());
 
-            // Call gg20_signing_base64 to sign the message
-            let result = invoke_gg20_signing(&config_clone, parsed_request).await;
+            // Call my_gg20_signing_base64 to sign the message
+            let result = invoke_my_gg20_signing(&config_clone, parsed_request).await;
 
             // Prepare the response
             let response = match result {
@@ -254,10 +259,10 @@ async fn listen_signing(port: i32, config: gg20_signing::Cli) {
 async fn invoke_gg20_dkg(
     config: &gg20_keygen::Cli,
     request: DKGRequest,
-) -> Result<(), String> {
+) -> Result<String> {
     let mut args = config.clone();
-    args.threshold=config.threshold.clone();
-    args.number_of_parties=config.number_of_parties.clone();
+    args.threshold=request.threshold.clone();
+    args.number_of_parties=request.number_of_parties.clone();
     args.room=format!("dkg_room_{}", request.request_index.clone());
 
     println!(
@@ -276,14 +281,12 @@ async fn invoke_gg20_dkg(
         args.room.clone()
     );
 
-    let result = gg20_keygen::gg20_keygen(args)
-        .await
-        .map_err(|e| e.to_string());
+    let result = gg20_keygen::gg20_keygen(args).await.map(|_| "".to_string());
     result
 }
 
 
-async fn invoke_gg20_signing(
+async fn invoke_my_gg20_signing(
     config: &gg20_signing::Cli,
     request: SigningRequest,
 ) -> Result<String> {
@@ -313,8 +316,7 @@ async fn invoke_gg20_signing(
         "    >> Type of input data is: ",
         args.input_data_type.clone()
     );
-    let result = gg20_signing::gg20_signing(args)
-        .await;
+    let result = gg20_signing::gg20_signing(args).await;
     result
 }
 
@@ -325,3 +327,20 @@ fn authenticate(authinfo: String) -> bool {
     }
     false
 }
+
+// fn prepare_response(result :Result<String>)->NodeResponse{
+//     let response = match result {
+//         Ok(data) => {
+//             println!("    >> Success: {}", data);
+//             NodeResponse{
+//                 request_index: todo!(),
+//                 is_success: todo!(),
+//                 data,
+//             }
+//         }
+//         Err(error) => {
+//             eprintln!("Failed to generate signature: {}", error);
+//             format!("Error: {}", error)
+//         }
+//     };
+// }

@@ -1,5 +1,5 @@
 {
     "rust-analyzer.linkedProjects": [
-        "./ecosigner_cli/Cargo.toml"
+        "./ecosigner_cli/Cargo.toml",
     ]
 }
