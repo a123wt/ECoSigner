@@ -40,8 +40,8 @@ impl std::str::FromStr for DataType {
 
     fn from_str(s: &str) -> Result<Self,String> {
         match s {
-            "utf8" => Ok(DataType::Utf8),
-            "base64" => Ok(DataType::Base64),
+            "Utf8" => Ok(DataType::Utf8),
+            "Base64" => Ok(DataType::Base64),
             "Vector" => Ok(DataType::Vector),
             _ => Err(format!("Invalid input data type: {}", s)),
         }
@@ -116,7 +116,7 @@ async fn gg20_signing_original(args:Cli) -> Result<String> {
     // let file_content_b64 = fs::read_to_string(&args.data_to_sign).expect("fail");
     // let decode_file = util::decode(&file_content_b64);
 
-    let data_to_sign=process_data_to_sign(&args_clone).unwrap();
+    let data_to_sign=process_data_to_sign(&args_clone)?;
 
 //data_tosign和decode_file的区别
     let (signing, partial_signature) = SignManual::new(
@@ -161,16 +161,16 @@ async fn gg20_signing_original(args:Cli) -> Result<String> {
 
 }
 
-fn process_data_to_sign(args: &Cli)->Result<Vec<u8>,String>{
+fn process_data_to_sign(args: &Cli)->Result<Vec<u8>>{
     match args.input_data_type {
         DataType::Utf8=>{
             Ok(args.data_to_sign.as_bytes().to_vec())
         },
         DataType::Base64=>{       
-            base64::decode_block(&args.data_to_sign).map_err(|e| e.to_string())
+            Ok(base64::decode_block(&args.data_to_sign).map_err(|_| anyhow!("Failed decode input data as base64"))?)
         },
         DataType::Vector=>{
-            serde_json::from_str::<Vec<u8>>(&args.data_to_sign).map_err(|e| e.to_string())
+            Ok(serde_json::from_str::<Vec<u8>>(&args.data_to_sign).map_err(|_| anyhow!("Failed read input data as bytes"))?)
         },
         // _ =>{
         //     Err( "wrong type of input data".to_string() )

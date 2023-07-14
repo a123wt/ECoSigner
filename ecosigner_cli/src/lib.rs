@@ -1,2 +1,2 @@
-pub mod mpe_lib;
+pub mod mpe;
 
