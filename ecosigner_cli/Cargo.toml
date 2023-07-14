@@ -41,6 +41,6 @@ name="ecosigner_node"
 path="./src/bin/ecosigner_node.rs"
 
 [[bin]]
-name="ecosigner"
-path="./src/bin/ecosigner.rs"
+name="ecosigner_prepare"
+path="./src/bin/ecosigner_prepare.rs"
 

@@ -57,10 +57,6 @@ async fn main() {
     let config = Cli::from_args();
     print_node_info(config.clone());
 
-    // // pre config dkg and signing, some items will be changed by request
-    // let signing_config = pre_config_signing(config.clone());
-    // let dkg_config = pre_config_dkg(config.clone());
-
     // Start listening for DKG messages
     let config_clone=config.clone();
     let dkg_task = tokio::spawn(async move {
@@ -88,30 +84,6 @@ fn print_node_info(args: Cli) {
     );
 }
 
-// fn pre_config_dkg(args: Cli) -> gg20_keygen::Cli {
-//     // let path = format!("./local-share{}.json", args.index.clone().to_string());
-//     gg20_keygen::Cli {
-//         address: args.chat_channel_of_nodes,
-//         room: "default-signing".to_string(), // change as dkg request
-//         output: std::path::PathBuf::from("./local-shares-unknown"), // change as dkg request
-//         index: args.index,
-//         threshold: 1,         // change as dkg request
-//         number_of_parties: 3, // change as dkg request
-//     }
-// }
-
-// fn pre_config_signing(args: Cli) -> gg20_signing::Cli {
-//     // let path = format!("./local-share{}.json", args.index.clone().to_string());
-//     gg20_signing::Cli {
-//         address: args.chat_channel_of_nodes,
-//         room: "default-signing".to_string(), // change as signing request
-//         local_share: std::path::PathBuf::from("./local-shares-unknown"), // change as signing request
-//         parties: vec![0 as u16],                  // change as signing request
-//         data_to_sign: "To Be Signed".to_string(), // change as signing request
-//         input_data_type: gg20_signing::DataType::Base64, // change as signing request
-//         output_data_type:gg20_signing::DataType::Base64,
-//     }
-// }
 
 #[allow(non_snake_case)]
 async fn listen_DKG(config:&Cli) {
@@ -167,16 +139,7 @@ async fn listen_DKG(config:&Cli) {
 
             // Prepare the response
             let response=prepare_response(parsed_request.request_index.clone(), result);
-            // let response = match result {
-            //     Ok(_) => {
-            //         println!("    >> DKG result: {}", "Success");
-            //         format!("DKG result: {}", "Success")
-            //     }
-            //     Err(error) => {
-            //         eprintln!("Failed to dkg: {}", error);
-            //         format!("Error: {}", error)
-            //     }
-            // };
+
 
             // Write the response to the socket
             socket
@@ -241,16 +204,7 @@ async fn listen_signing( config: &Cli) {
 
             // Prepare the response
             let response=prepare_response(parsed_request.request_index.clone(), result);
-            // let response = match result {
-            //     Ok(signature) => {
-            //         println!("    >> Signature: {}", signature);
-            //         format!("Signature: {}", signature)
-            //     }
-            //     Err(error) => {
-            //         eprintln!("Failed to generate signature: {}", error);
-            //         format!("Error: {}", error)
-            //     }
-            // };
+
 
             // Write the response to the socket
             socket
@@ -267,6 +221,7 @@ async fn invoke_gg20_dkg(
     config: Cli,
     request: DKGRequest,
 ) -> Result<String> {
+    // set dkg args from node config and request
     let config=config.clone();
     let request=request.clone();
     let path = format!("./local-shares-{}/id_{}.json", config.index.to_string(),request.identity.to_string());
@@ -279,8 +234,6 @@ async fn invoke_gg20_dkg(
         threshold: request.threshold, 
         number_of_parties: request.number_of_parties, 
     };
-
-
 
     println!(
         "{}{}",
@@ -298,21 +251,16 @@ async fn invoke_gg20_dkg(
         args_dkg.room.clone()
     );
 
-    let result = gg20_keygen::gg20_keygen(args_dkg).await.map(|_| "Key Share has been stored".to_string());
+    let result = gg20_keygen::gg20_keygen(args_dkg).await.map(op);
     result
 }
 
 
 async fn invoke_gg20_signing(
-
     config: Cli,
     request: SigningRequest,
 ) -> Result<String> {
-    // let mut args = config.clone();
-    // args.data_to_sign = request.tobesigned.clone();
-    // args.parties = request.parties.clone();
-    // args.input_data_type = request.input_data_type.clone();
-    // args.room = format!("signing_room_{}", request.request_index.clone());
+    // set signing args from node config and request
     let config=config.clone();
     let request=request.clone();
     let path = format!("./local-shares-{}/id_{}.json", config.index.to_string(),request.identity.to_string());

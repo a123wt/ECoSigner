@@ -27,7 +27,7 @@ pub struct Cli {
 }
 
 
-pub async fn gg20_keygen(args:Cli) -> Result<()> {
+pub async fn gg20_keygen(args:Cli) -> Result<String> {
     // let args: Cli = Cli::from_args();
     let mut output_file = tokio::fs::OpenOptions::new()
         .write(true)
@@ -49,10 +49,13 @@ pub async fn gg20_keygen(args:Cli) -> Result<()> {
         .run()
         .await
         .map_err(|e| anyhow!("protocol execution terminated with error: {}", e))?;
+    
+    let publikey=serde_json::to_string(&output.y_sum_s).context("generated public key")?;
+
     let output = serde_json::to_vec_pretty(&output).context("serialize output")?;
     tokio::io::copy(&mut output.as_slice(), &mut output_file)
         .await
         .context("save output to file")?;
 
-    Ok(())
+    Ok(publikey)
 }
