@@ -33,11 +33,13 @@ async fn subscribe(
     room_id: &str,
 ) -> EventStream<impl Stream<Item = Event>> {
     let room = db.get_room_or_create_empty(room_id).await;
-    let room_clone = Arc::clone(&room);
+    
+    // clone room and room_id for disconnection notification
+    let room_id_clone=room_id.to_owned();
+    let room_clone = room.to_owned();
+
     let mut subscription = room.subscribe(last_seen_msg.0);
     EventStream::from(stream! {
-        
-
         // 创建一个通道，用于接收 SSE 连接断开的信号
         let (_disconnect_tx, mut disconnect_rx) = mpsc::channel::<()>(1);
     
@@ -46,14 +48,10 @@ async fn subscribe(
             // 等待 SSE 连接断开的信号
             let _ = disconnect_rx.recv().await;
             
-            // 连接断开后的处理逻辑
-            // room_clone.leave();
-            println!(
-                "{}{}",
-                "Connection close, the index of subscriber is ".yellow().bold(),
-                room_clone.subscribers.load(Ordering::Relaxed).to_string().bold()
-            );
-            
+            // 连接断开后的提示
+            println!("{}","Connection close.".bold());
+            println!("   >> Room_id: {}",room_id_clone.bold());
+            println!("   >> Remaining num: {}",room_clone.subscribers.load(Ordering::SeqCst).to_string().bold());
         });
 
 
@@ -80,7 +78,7 @@ async fn issue_idx(db: &State<Db>, room_id: &str) -> Json<IssuedUniqueIdx> {
     println!(
         "{}{}",
         "Remote node join, the index of subscriber is ".green().bold(),
-        room.subscribers.load(Ordering::Relaxed).to_string().bold()
+        room.subscribers.load(Ordering::SeqCst).to_string().bold()
     );
 
     Json::from(IssuedUniqueIdx { unique_idx: idx })
@@ -164,7 +162,7 @@ impl Room {
     }
 
     pub fn issue_unique_idx(&self) -> u16 {
-        self.next_idx.fetch_add(1, Ordering::Relaxed)
+        self.next_idx.fetch_add(1, Ordering::SeqCst)
     }
 
     // pub fn leave(&self){

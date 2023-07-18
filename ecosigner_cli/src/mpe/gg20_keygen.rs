@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use curv::elliptic::curves::{Secp256k1, Point};
 use futures::StreamExt;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -27,7 +28,7 @@ pub struct Cli {
 }
 
 
-pub async fn gg20_keygen(args:Cli) -> Result<String> {
+pub async fn gg20_keygen(args:Cli) -> Result<Point<Secp256k1>> {
     // let args: Cli = Cli::from_args();
     let mut output_file = tokio::fs::OpenOptions::new()
         .write(true)
@@ -50,12 +51,12 @@ pub async fn gg20_keygen(args:Cli) -> Result<String> {
         .await
         .map_err(|e| anyhow!("protocol execution terminated with error: {}", e))?;
     
-    let publikey=serde_json::to_string(&output.y_sum_s).context("generated public key")?;
+    let publikey=&output.y_sum_s;
 
     let output = serde_json::to_vec_pretty(&output).context("serialize output")?;
     tokio::io::copy(&mut output.as_slice(), &mut output_file)
         .await
         .context("save output to file")?;
 
-    Ok(publikey)
+    Ok(publikey.to_owned())
 }

@@ -72,15 +72,6 @@ pub struct Cli {
     pub output_data_type:DataType,
 }
 
-// async fn main() -> Result<()> {
-//     let args: Cli = Cli::from_args();
-//     let res = match gg20_signing(args) { //此处match就是?的实现方法。
-//         Ok(res) => res,
-//         Err(e) => return Err(e), //std::ops::Try会自动做Err type 转换。
-//         };
-//     println!("{:?}", res);
-//     Ok(())
-// }
 
 async fn gg20_signing_original(args:Cli) -> Result<String> {
     let args_clone = args.clone();
@@ -112,13 +103,9 @@ async fn gg20_signing_original(args:Cli) -> Result<String> {
     tokio::pin!(incoming);
     tokio::pin!(outgoing);
 
-//加了这两行之后从对字符串签名变成了给以字符串为名的文件内容签名 
-    // let file_content_b64 = fs::read_to_string(&args.data_to_sign).expect("fail");
-    // let decode_file = util::decode(&file_content_b64);
-
+    //处理输入的数据，按照base64、utf8等方式解码 
     let data_to_sign=process_data_to_sign(&args_clone)?;
 
-//data_tosign和decode_file的区别
     let (signing, partial_signature) = SignManual::new(
         BigInt::from_bytes(&data_to_sign),
         completed_offline_stage,
@@ -144,21 +131,6 @@ async fn gg20_signing_original(args:Cli) -> Result<String> {
 
     Ok(signature)
 
-    //let sigii = signature.r;
-    //let sig = process_signed_data(signature, args.input_data_type);
-   
-
-    //println!("{:?}", sig);
-    //let mut file_path = args.data_to_sign.add(".signed");
-    //let mut file = File::create(file_path).expect("fail to create!");
-
-    // 将内容写入文件
-    //file.write_all(sig_b64.as_bytes()).expect("fail to write!");
-
-    //println!("{:?}", r_str_vec);
-    // println!("{}", sig_s);
-    // println!("{}", s);
-
 }
 
 fn process_data_to_sign(args: &Cli)->Result<Vec<u8>>{
@@ -172,9 +144,6 @@ fn process_data_to_sign(args: &Cli)->Result<Vec<u8>>{
         DataType::Vector=>{
             Ok(serde_json::from_str::<Vec<u8>>(&args.data_to_sign).map_err(|_| anyhow!("Failed read input data as bytes"))?)
         },
-        // _ =>{
-        //     Err( "wrong type of input data".to_string() )
-        // }
     }
 }
 
@@ -204,17 +173,9 @@ fn scalar_to_vec(signed_data : Scalar<Secp256k1>) -> Vec<u8> {
     let vec_str: Vec<u8> = sub_serial.split(',').map(|s|String::from(s).parse().unwrap()).collect();
     return vec_str;
 }
-// fn merge_sig_to_b64(sig_r : String,sig_s : String) -> String {
-//     let vec_r = scalar_to_vec(sig_r);
-//     let vec_s = scalar_to_vec(sig_s);
-//     let sig_vec: Vec<u8> = vec_r.into_iter().chain(vec_s.into_iter()).collect();
-//     let sig_b64 = encode(sig_vec);
-//     return sig_b64;
-// }
 
 pub async fn gg20_signing(args:Cli) -> Result<String> {
     let sig = gg20_signing_original(args.clone()).await?;
     let sig_str = process_signed_data(sig, args.output_data_type)?;
-    // println!("{:?}",sig_str);
     Ok(sig_str)
 }
