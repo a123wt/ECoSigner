@@ -35,7 +35,7 @@ der-parser = {version="8.2.0",features=["serialize"]}
 
 [[bin]]
 name="inter_node_channel"
-path="./src/bin/inter_node_channel.rs"
+path="./src/bin/inter_node_communication.rs"
 
 [[bin]]
 name="ecosigner_node"

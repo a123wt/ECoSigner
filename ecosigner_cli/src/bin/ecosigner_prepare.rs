@@ -247,7 +247,7 @@ use openssl::ecdsa::EcdsaSig;
 async fn sign_csr_manually(public_key_point:Point<ECCURVE>,nodes_config: &NodesConfig)->Result<()> {
     // 加载私钥
     let tmp_private_key_pem =
-        include_str!("/mnt/multi-party-ecdsa-cert/cert/cert_1_secp256k1/private.key");
+        include_str!("./private.key");
     let tmp_private_key = PKey::private_key_from_pem(tmp_private_key_pem.as_bytes()).unwrap();
     // let private_eckey=EcKey::private_key_from_pem(tmp_private_key_pem.as_bytes()).unwrap();
 

@@ -42,10 +42,14 @@ async fn main() -> Result<()> {
 
     let signing_response=request_signing(tbs_base64, vec![1,2], &nodes_config).await?;
     let result=check_responses_signing(signing_response)?;
-    println!("   >> 代码摘要签名值 {}",result);
+    let sig_bytes=base64::decode_block(&result).map_err(|_| anyhow!("Failed decode signature as base64"))?;
+    let sig_secp256k1=Signature::from_compact(&sig_bytes)?;
+    let sig_der=sig_secp256k1.serialize_der();
+    let sig_der_base64=base64::encode_block(&sig_der);
+    println!("   >> 代码摘要签名值Der {}",sig_der_base64);
 
     let mut file = std::fs::File::create("./hello.exe.dig.signed").expect("Failed to create file");
-    file.write_all(result.as_bytes()).expect("Failed to write to file");
+    file.write_all(sig_der_base64.as_bytes()).expect("Failed to write to file");
 
     Ok(())
 }
