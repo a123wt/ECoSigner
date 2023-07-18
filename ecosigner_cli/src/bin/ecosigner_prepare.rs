@@ -35,7 +35,7 @@ type ECCURVE = curv::elliptic::curves::secp256_k1::Secp256k1;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let nodes_config = read_config_nodes("/root/workspace/ecosigner/ecosigner_cli/src/bin/config_nodes.json".to_string()).await?;
+    let nodes_config = read_config_nodes("./config_nodes.json".to_string()).await?;
 
     let dkg_responses = request_dkg(&nodes_config).await?;
     let public_key=check_dkg_responses(dkg_responses)?;

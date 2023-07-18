@@ -35,13 +35,14 @@ type ECCURVE = curv::elliptic::curves::secp256_k1::Secp256k1;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let nodes_config=read_config_nodes("./src/bin/config_nodes.json".to_string()).await?;
+    let nodes_config=read_config_nodes("./config_nodes.json".to_string()).await?;
     let tbs_base64 = tokio::fs::read_to_string(PathBuf::from("./hello.exe.dig"))
         .await
         .context("Failed to read nodes config file")?;
 
     let signing_response=request_signing(tbs_base64, vec![1,2], &nodes_config).await?;
     let result=check_responses_signing(signing_response)?;
+    println!("   >> 代码摘要签名值 {}",result);
 
     let mut file = std::fs::File::create("./hello.exe.dig.signed").expect("Failed to create file");
     file.write_all(result.as_bytes()).expect("Failed to write to file");
