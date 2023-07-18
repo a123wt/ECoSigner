@@ -38,25 +38,21 @@ async fn main() -> Result<()> {
     let nodes_config = read_config_nodes("/root/workspace/ecosigner/ecosigner_cli/src/bin/config_nodes.json".to_string()).await?;
 
     let dkg_responses = request_dkg(&nodes_config).await?;
-
-    let public_key=verify_dkg(dkg_responses)?;
+    let public_key=check_dkg_responses(dkg_responses)?;
     
-    println!("{}",serde_json::to_string(&public_key)?);
+    println!("   >> DKG公钥 {}",serde_json::to_string(&public_key)?);
 
-    let csr_config=read_config_csr("/root/workspace/ecosigner/ecosigner_cli/src/bin/config_csr.json".to_string()).await?;
-    let req=build_req(csr_config).await?;
-    let req_pemfile=String::from_utf8(req.to_pem().unwrap()).unwrap(); 
-    let mut file = std::fs::File::create("./csr.pem").expect("Failed to create file");
+    let _=sign_csr_manually(public_key,&nodes_config).await?;
 
-    file.write_all(req_pemfile.as_bytes()).expect("Failed to write to file");
-    println!("{:?}",req_pemfile);
 
-    let signing_respopnse
-        =request_signing("YWFh".to_string(), vec![1 as u16,2], &nodes_config).await?;
-    println!("{:?}",signing_respopnse);
-    let sig=verify_signing(signing_respopnse)?;
-    println!("{}",sig);
-    verify_signature("YWFh".to_string(), sig, public_key);
+
+    // let signing_respopnse
+    //     =request_signing("YWFh".to_string(), vec![1 as u16,2], &nodes_config).await?;
+    // println!("{:?}",signing_respopnse);
+    // let sig=verify_signing(signing_respopnse)?;
+    // println!("{}",sig);
+    // let result=verify_signature("YWFh".to_string(), sig, public_key);
+    // println!("sig verify{:?}",result);
 
     Ok(())
 }
@@ -79,44 +75,52 @@ async fn read_config_csr(path: String) -> Result<X509Config> {
     return Ok(x509config);
 }
 
-fn verify_dkg(responses:Vec<NodeResponse<Point<ECCURVE>>>)->Result<Point<ECCURVE>>{
+fn check_dkg_responses(responses:Vec<NodeResponse<Point<ECCURVE>>>)->Result<Point<ECCURVE>>{
     // todo
     let is_equal = responses.iter().all(|x| x.data == responses[0].data);
 
     if is_equal{
-        println!("   >> BSL Validator: {}","Valid".green().bold());
+        println!("   >> 检查DKG响应: {}","Valid".green().bold());
         return Ok(responses[0].data.to_owned())
     }
-    eprintln!("   >> BSL Validator: {}","Invalid".red().bold());
-    return Err(anyhow!("Failed to pass BLS Validator"))
+    eprintln!("   >> 检查DKG响应: {}","Invalid".red().bold());
+    return Err(anyhow!("Failed to pass responses check"))
 
 }
-fn verify_signing(responses:Vec<NodeResponse<String>>)->Result<String>{
+fn check_responses_signing(responses:Vec<NodeResponse<String>>)->Result<String>{
     // todo
     let is_equal = responses.iter().all(|x| x.data == responses[0].data);
 
     if is_equal{
-        println!("   >> BSL Validator: {}","Valid".green().bold());
+        println!("   >> 检查签名响应: {}","Valid".green().bold());
         return Ok(responses[0].data.to_owned())
     }
-    eprintln!("   >> BSL Validator: {}","Invalid".red().bold());
-    return Err(anyhow!("Failed to pass BLS Validator"))
+    eprintln!("   >> 检查签名响应: {}","Invalid".red().bold());
+    return Err(anyhow!("Failed to pass responses check"))
 
 }
-fn verify_signature(tbs_base64:String,sig:String,public_key:Point<Secp256k1>)->Result<()>{
+fn verify_signature(tbs_base64:String,sig:String,public_key:Point<Secp256k1>)->Result<bool>{
     let tbs_bytes=base64::decode_block(&tbs_base64).map_err(|_| anyhow!("Failed decode to be signed data as base64"))?;
     let sig_bytes=base64::decode_block(&sig).map_err(|_| anyhow!("Failed decode signature as base64"))?;
     let sig_secp256k1=Signature::from_compact(&sig_bytes)?;
     let sig_der=sig_secp256k1.serialize_der();
-    let public_key_secp256k1=secp256k1::PublicKey::from_slice(public_key.to_bytes(false).as_bytes())?;
-    let msg_secp256k1=secp256k1::Message::from_slice(&tbs_bytes)?;
-    let result=sig_secp256k1.verify(&msg_secp256k1, &public_key_secp256k1);
-    println!("{:?}",result);
-    Ok(())
+    let sig_openssl=EcdsaSig::from_der(&sig_der)?;
+
+    let public_key_bytes = public_key.to_bytes(true).to_vec();
+    let ecg = ec::EcGroup::from_curve_name(Nid::SECP256K1).unwrap();
+    let mut ctx = openssl::bn::BigNumContext::new().unwrap();
+    let public_key_ec_point=openssl::ec::EcPoint::from_bytes(ecg.as_ref(), public_key_bytes.as_ref(), &mut ctx)?;
+    let public_key_eckey =
+        openssl::ec::EcKey::from_public_key(ecg.as_ref(), public_key_ec_point.as_ref()).context("Failed to get public key bytes")?;
+    // let public_key_der=public_key_eckey.public_key_to_der()?;
+    // let public_key_pkey=PKey::from_ec_key(public_key_eckey)?;
+    
+    let result=sig_openssl.verify(&tbs_bytes, public_key_eckey.as_ref()).context("Failed to verify signature")?;
+    Ok(result)
 }
 
 async fn request_dkg(nodes_config: &NodesConfig) -> Result<Vec<NodeResponse<Point<ECCURVE>>>> {
-    println!("{}", "\nRequest Distributed Key Generation".bold());
+    println!("{}", "\n发起DKG请求".bold());
     let nodes_config = nodes_config.clone();
 
     // create a new dkg request to nodes
@@ -127,7 +131,7 @@ async fn request_dkg(nodes_config: &NodesConfig) -> Result<Vec<NodeResponse<Poin
         identity: nodes_config.identity,
     };
     let request = serde_json::to_string(&request).context("Fail to read config to request DKG")?;
-    println!("   >> DKG request is: {}", request);
+    println!("   >> DKG请求数据包为: {}", request);
 
     let mut tasks = vec![];
     for node in nodes_config.nodes {
@@ -150,7 +154,7 @@ async fn request_dkg(nodes_config: &NodesConfig) -> Result<Vec<NodeResponse<Poin
             let bytes_read = stream.read(&mut buffer).await?;
             let response = String::from_utf8_lossy(&buffer[..bytes_read]);
 
-            println!( "   >> DKG response of node {} is: {}", node_clone.index, response );
+            println!( "   >> 收到节点 {} 的响应: {}", node_clone.index, response );
             Ok(response.to_string())
         });
         std::thread::sleep(std::time::Duration::from_secs(1));
@@ -230,41 +234,17 @@ fn request_x509() {}
 use der_parser::{ber::BerObject, nom::AsBytes};
 use der_parser::ber::BerObjectContent;
 use der_parser::ber::BitStringObject;
-use openssl::hash;
-use openssl::sha::sha256;
-use openssl::sign::Signer;
-
-use secp256k1::SecretKey;
-use std::any;
-use std::fs::remove_dir;
-use std::u8;
 use std::vec;
-
-// use sha256;
-
-use hex;
-use openssl::asn1;
-use openssl::asn1::Asn1BitString;
-use openssl::asn1::Asn1Object;
-use openssl::asn1::Asn1String;
 use openssl::bn::BigNum;
 use openssl::bn::BigNumContext;
 use openssl::ec::EcGroup;
 use openssl::ec::EcKey;
 use openssl::ec::EcPoint;
-use openssl::ec::PointConversionForm;
-
 use openssl::ecdsa::EcdsaSig;
 
-use openssl::pkey::Private;
-use openssl::pkey::Public;
-
-use openssl::x509::X509;
 
 
-
-
-fn sign_csr_manually(public_key_point:Point<ECCURVE>) {
+async fn sign_csr_manually(public_key_point:Point<ECCURVE>,nodes_config: &NodesConfig)->Result<()> {
     // 加载私钥
     let tmp_private_key_pem =
         include_str!("/mnt/multi-party-ecdsa-cert/cert/cert_1_secp256k1/private.key");
@@ -274,11 +254,8 @@ fn sign_csr_manually(public_key_point:Point<ECCURVE>) {
     // 获取mp公钥
     let ecg = EcGroup::from_curve_name(Nid::SECP256K1).unwrap();
     let mut ctx = BigNumContext::new().unwrap();
-    let mp_public_key_bytes = [
-        3 as u8, 157, 205, 128, 140, 7, 68, 213, 146, 9, 145, 153, 204, 216, 99, 157, 214, 140,
-        146, 182, 194, 122, 78, 94, 89, 182, 185, 157, 200, 34, 255, 212, 62,
-    ];
-    let mp_public_key_point = EcPoint::from_bytes(&ecg, &mp_public_key_bytes, &mut ctx).unwrap();
+
+    let mp_public_key_point = EcPoint::from_bytes(&ecg, &public_key_point.to_bytes(true).as_bytes(), &mut ctx).unwrap();
     let mp_public_key_eckey = EcKey::from_public_key(&ecg, &mp_public_key_point).unwrap();
     let mp_public_key_der = mp_public_key_eckey.public_key_to_der().unwrap();
     let mp_public_key = PKey::public_key_from_der(&mp_public_key_der).unwrap();
@@ -288,7 +265,8 @@ fn sign_csr_manually(public_key_point:Point<ECCURVE>) {
 
     // 设置主体信息
     let mut subject_name = X509NameBuilder::new().unwrap();
-    subject_name.append_entry_by_nid(Nid::COMMONNAME, "EchoTeam Multi Party Ecdsa").unwrap();
+    subject_name.append_entry_by_nid(Nid::COMMONNAME, "Geedge BSL Group")?;
+    // subject_name.append_entry_by_nid(Nid::ORGANIZATIONNAME, "Geedge BSL Group")?;
     let subject_name = subject_name.build();
     // req_builder.set_subject_name(&subject_name)?;
 
@@ -305,10 +283,10 @@ fn sign_csr_manually(public_key_point:Point<ECCURVE>) {
     // build
     let req = req_builder.build();
 
-    println!(
-        "validte tmp req    {}",
-        req.verify(&tmp_private_key).unwrap()
-    );
+    // println!(
+    //     "validte tmp req    {}",
+    //     req.verify(&tmp_private_key).unwrap()
+    // );
 
     // 转为der
     let req_der = req.to_der().unwrap();
@@ -319,31 +297,31 @@ fn sign_csr_manually(public_key_point:Point<ECCURVE>) {
     let (_i, req_parsed) = parse_der_sequence(&req_der).unwrap();
     let req_parsed_pretty = req_parsed.as_pretty(0, 4);
 
-    println!("req_parsed\n{:?}", req_parsed);
-    println!("req_parsed_pretty\n{:?}", req_parsed_pretty);
+    // println!("req_parsed\n{:?}", req_parsed);
+    // println!("req_parsed_pretty\n{:?}", req_parsed_pretty);
 
     // 待签名部分
     let tbs_req = req_parsed[0].to_vec().unwrap();
     // tbs_req.extend(req_parsed[1].to_vec().unwrap());
     let tbs_req_hash = openssl::hash::hash(MessageDigest::sha256(), &tbs_req).unwrap();
 
-    println!("{:?}", tbs_req_hash);
+    // println!("{:?}", tbs_req_hash);
 
-    // 获取mp签名
-    let sig_r = [28,211,94,33,145,131,110,152,156,189,129,54,2,74,12,66,224,204,110,178,121,251,158,251,95,162,106,81,123,229,195,102];
-    let sig_s = [118,203,234,100,115,201,161,45,92,200,202,253,248,150,202,170,242,198,153,243,32,246,151,247,124,244,80,113,43,179,224,22];
-    let sig_r_bn = BigNum::from_slice(&sig_r).unwrap();
-    let sig_s_bn = BigNum::from_slice(&sig_s).unwrap();
-
-    let sig_ecdsa = EcdsaSig::from_private_components(sig_r_bn, sig_s_bn).unwrap();
+    let tbs_req_hash_base64=openssl::base64::encode_block(&tbs_req_hash);
+    let signging_response=request_signing(tbs_req_hash_base64, vec![1,2], nodes_config).await?;
+    let sig_string_base64=check_responses_signing(signging_response)?;
+    let sig_bytes=base64::decode_block(&sig_string_base64).map_err(|_| anyhow!("Failed decode signature as base64"))?;
+    let sig_secp256k1=Signature::from_compact(&sig_bytes)?;
+    let sig_der=sig_secp256k1.serialize_der();
+    let sig_ecdsa=EcdsaSig::from_der(&sig_der)?;
     let sig = sig_ecdsa.to_der().unwrap();
 
-    println!(
-        "verify mp sig    {}",
-        sig_ecdsa
-            .verify(tbs_req_hash.as_bytes(), &mp_public_key_eckey)
-            .unwrap()
-    );
+    // println!(
+    //     "   >> verify mp sig    {}",
+    //     sig_ecdsa
+    //         .verify(tbs_req_hash.as_bytes(), &mp_public_key_eckey)
+    //         .unwrap()
+    // );
 
     // req_parsed[2].content.as_bitstring().unwrap().data=&sig.to_vec();
     // println!("\n\nnew\n{:?}",req_parsed);
@@ -376,22 +354,26 @@ fn sign_csr_manually(public_key_point:Point<ECCURVE>) {
     let req_final_der = req_final.to_vec().unwrap();
     let req_final_pretty = req_final.as_pretty(0, 4);
 
-    println!("\n\ncheck\n{:?}", req_final);
-    println!("\n\ncheck\n{:?}", req_final_pretty);
-    println!("\n\ncheck\n{:?}", req_final_der);
+    // println!("\n\ncheck\n{:?}", req_final);
+    // println!("\n\ncheck\n{:?}", req_final_pretty);
+    // println!("\n\ncheck\n{:?}", req_final_der);
 
     let req_final_x509req = X509Req::from_der(&req_final_der).unwrap();
     let r = req_final_x509req.verify(&mp_public_key);
-    println!("\nresult{:?}", r);
+    // println!("\nresult{:?}", r);
 
     let req_final_pemfile=String::from_utf8(req_final_x509req.to_pem().unwrap()).unwrap();    
-    println!("\nmp_req_pem\n{}",req_final_pemfile);
+    println!("   >> 证书申请文件\n{}",req_final_pemfile);
+
+    let mut file = std::fs::File::create("./csr.pem").expect("Failed to create file");
+    file.write_all(req_final_pemfile.as_bytes()).expect("Failed to write to file");
+    Ok(())
 }
 
 
 
 async fn request_signing(tbs_base64:String,signing_parties:Vec<u16>,nodes_config: &NodesConfig) -> Result<Vec<NodeResponse<String>>> {
-    println!("{}", "\nRequest Signing".bold());
+    println!("{}", "\n发起签名请求".bold());
     let nodes_config = nodes_config.clone();
 
     // create a new dkg request to nodes
@@ -409,7 +391,7 @@ async fn request_signing(tbs_base64:String,signing_parties:Vec<u16>,nodes_config
         identity: nodes_config.identity,
     };
     let request = serde_json::to_string(&request).context("Fail to read config to request DKG")?;
-    println!("   >> Signing request is: {}", request);
+    println!("   >> 签名请求数据包为: {}", request);
     
     
     let signing_nodes:Vec<Node>=nodes_config.nodes
@@ -441,7 +423,7 @@ async fn request_signing(tbs_base64:String,signing_parties:Vec<u16>,nodes_config
             let bytes_read = stream.read(&mut buffer).await?;
             let response = String::from_utf8_lossy(&buffer[..bytes_read]);
 
-            println!( "   >> Signing response of node {} is: {}", node_clone.index, response );
+            println!( "   >> 收到节点 {} 的响应: {}", node_clone.index, response );
             Ok(response.to_string())
         });
         std::thread::sleep(std::time::Duration::from_secs(1));
