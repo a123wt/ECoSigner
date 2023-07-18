@@ -23,7 +23,7 @@ pub struct DKGRequest {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NodeResponse<T:Serialize>{
     pub request_index:String,
-    pub is_success:String,
+    pub status:String,
     pub data:T,
 }
 
@@ -49,3 +49,4 @@ pub struct X509Config {
     pub organization_name:String,
     pub public_key:Point<Secp256k1>
 }
+

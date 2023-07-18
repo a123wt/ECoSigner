@@ -32,7 +32,7 @@ pub async fn gg20_keygen(args:Cli) -> Result<Point<Secp256k1>> {
     // let args: Cli = Cli::from_args();
     let mut output_file = tokio::fs::OpenOptions::new()
         .write(true)
-        .create_new(true)
+        .create(true)
         .open(args.output)
         .await
         .context("cannot create output file")?;

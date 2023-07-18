@@ -24,13 +24,14 @@ surf = "2"
 async-sse = "5"
 anyhow = "1"
 structopt = "0.3"
-secp256k1 = { version = "0.20", features = ["global-context"] }
+secp256k1 = { version = "0.27", features = ["global-context"] }
 thiserror = "1.0.23"
 round-based = { version = "0.1.4", features = ["dev"] }
 curv-kzen = { version = "0.9", default-features = false }
 colored = "2.0.4"
 ansi_term = "0.12.1"
 openssl = "0.10.55"
+der-parser = {version="8.2.0",features=["serialize"]}
 
 [[bin]]
 name="inter_node_channel"

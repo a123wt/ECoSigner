@@ -4,9 +4,11 @@
 use std::fmt::Debug;
 
 use anyhow::Context;
+use anyhow::anyhow;
 use colored::Colorize;
 use curv::elliptic::curves::Point;
 use curv::elliptic::curves::Secp256k1;
+use der_parser::nom::Err;
 use ecosigner_cli::mpe::gg20_keygen;
 use ecosigner_cli::mpe::gg20_signing;
 use ecosigner_cli::common_structs::{DKGRequest,SigningRequest,NodeResponse};
@@ -21,7 +23,8 @@ use tokio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use anyhow::Result;
-
+use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::party_i::SignatureRecid;
+type ECCURVE=curv::elliptic::curves::secp256_k1::Secp256k1;
 
 #[derive(Debug, StructOpt, Clone)]
 #[structopt(name="Share Node")]
@@ -123,7 +126,7 @@ async fn listen_DKG(config:&Cli) {
             let result = invoke_gg20_dkg(config, parsed_request.clone()).await;
 
             // Prepare the response
-            let response=prepare_response(parsed_request.request_index.clone(), result);
+            let response=prepare_response(parsed_request.request_index.clone(), result).await;
 
 
             // Write the response to the socket
@@ -188,7 +191,7 @@ async fn listen_signing( config: &Cli) {
             let result = invoke_gg20_signing(config.clone(), parsed_request.clone()).await;
 
             // Prepare the response
-            let response=prepare_response(parsed_request.request_index.clone(), result);
+            let response=prepare_response(parsed_request.request_index.clone(), result).await;
 
 
             // Write the response to the socket
@@ -205,7 +208,7 @@ async fn listen_signing( config: &Cli) {
 async fn invoke_gg20_dkg(
     config: Cli,
     request: DKGRequest,
-) -> Result<Point<Secp256k1>> {
+) -> Result<Point<ECCURVE>> {
     // set dkg args from node config and request
     let config=config.clone();
     let request=request.clone();
@@ -292,38 +295,22 @@ fn authenticate(authinfo: String) -> bool {
     false
 }
 
-fn prepare_response<T:Serialize>(request_index:String,result :Result<T>)->Result<String>{
-    // let response;
-    // if let Ok(data)=result{
-    //     println!("   >> Success: {}", serde_json::to_string(&data)?);
-    //     response=NodeResponse{
-    //         request_index: request_index,
-    //         is_success: "Success".to_string(),
-    //         data:data,
-    //     }
-    // }else if let Err(data)=result{
-    //     eprintln!("Failed to generate signature: {}", error);
-    //     NodeResponse{
-    //         request_index: request_index,
-    //         is_success: "Error".to_string(),
-    //         data:error.to_string(),
-    //     }
-    // }
+async fn prepare_response<T:Serialize>(request_index:String,result :Result<T>)->Result<String>{
     match result {
         Ok(data) => {
             println!("   >> Success: {}", serde_json::to_string(&data)?);
             let response=NodeResponse{
                 request_index: request_index,
-                is_success: "Success".to_string(),
+                status: "New".to_string(),
                 data:data,
             };
             return serde_json::to_string(&response).context("Failed to generate json response");
         },
         Err(error) => {
-            eprintln!("Failed to generate signature: {}", error);
+            eprintln!("Error: {}", error);
             let response=NodeResponse{
                 request_index: request_index,
-                is_success: "Error".to_string(),
+                status: "Error".to_string(),
                 data:error.to_string(),
             };
             return serde_json::to_string(&response).context("Failed to generate json response");

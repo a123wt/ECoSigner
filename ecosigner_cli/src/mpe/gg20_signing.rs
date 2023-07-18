@@ -147,8 +147,8 @@ fn process_data_to_sign(args: &Cli)->Result<Vec<u8>>{
     }
 }
 
-fn process_signed_data(signed_data : String, output_data_type : DataType) -> Result<String> {
-    let signed_data :SignatureRecid= serde_json::from_str(&signed_data)?;
+fn process_signed_data(signed_data_string : String, output_data_type : DataType) -> Result<String> {
+    let signed_data :SignatureRecid= serde_json::from_str(&signed_data_string.clone())?;
     let vec_r = scalar_to_vec(signed_data.r);
     let vec_s = scalar_to_vec(signed_data.s);
     let sig_vec: Vec<u8> = vec_r.into_iter().chain(vec_s.into_iter()).collect();
@@ -160,8 +160,8 @@ fn process_signed_data(signed_data : String, output_data_type : DataType) -> Res
         DataType::Vector=>{
             Ok(format!("{:?}",sig_vec))
         },
-        _ =>{
-            Err( anyhow!("wrong type of input data"))
+        DataType::Utf8 =>{
+            Ok(serde_json::to_string(&signed_data_string)?)
         }
         
     }
