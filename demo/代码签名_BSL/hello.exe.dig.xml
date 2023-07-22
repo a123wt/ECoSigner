@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DigestSigning>
+  <Digest File="hello.exe" Date="2023/7/19" Time="7:40:08" HashAlgorithm="SHA256" Padding="PKCS1" ToBeSignedHash="VCAxZnrgVMO8AVRZuKIbOTxbaWU7L1e9Cf/buFlCSGU=" />
+  <CertInfo Subject="Geedge BSL Group" Issuer="Geedge CA" SerialNumber="35bc76a7aa5de08bce016ed0749c6bfd03aeab5c" Thumbprint="8b37c2c2413a814b66744bf278be5a5ec7759ee6" KeyId="635fb64495821557ec4eae10b289b48081e3fdc5a792813a63ac3e173fe0f224" />
+</DigestSigning>

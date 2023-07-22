@@ -1,0 +1,2 @@
+.\.initializer.exe
+pause
