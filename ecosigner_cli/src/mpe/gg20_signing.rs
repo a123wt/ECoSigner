@@ -20,7 +20,7 @@ use round_based::async_runtime::AsyncProtocol;
 use round_based::Msg;
 
 use super::gg20_sm_client;
-use gg20_sm_client::join_computation;
+use gg20_sm_client::join_computation_with_fixed_index;
 
 
 use openssl::base64;
@@ -60,6 +60,9 @@ pub struct Cli {
     #[structopt(short, long)]
     pub local_share: PathBuf,
 
+    #[structopt(long, default_value = "0")]
+    pub index: u16,
+
     #[structopt(short, long, use_delimiter(true))]
     pub parties: Vec<u16>,
     #[structopt(short, long)]
@@ -75,62 +78,81 @@ pub struct Cli {
 
 async fn gg20_signing_original(args:Cli) -> Result<String> {
     let args_clone = args.clone();
+
+    if args.index == 0 {
+        return Err(anyhow!(
+            "--index must be non-zero (use the node's fixed index, e.g. 1..n) to avoid self-message error"
+        ));
+    }
+    let my_index = args.index;
+
     let local_share = tokio::fs::read(args.local_share)
         .await
         .context("cannot read local share")?;
     let local_share = serde_json::from_slice(&local_share).context("parse local share")?;
     let number_of_parties = args.parties.len();
 
-    let (i, incoming, outgoing) =
-        join_computation(args.address.clone(), &format!("{}-offline", args.room))
-            .await
-            .context("join offline computation")?;
+    // -------- Offline: always join with fixed index --------
+    let (incoming, outgoing) = join_computation_with_fixed_index(
+        args.address.clone(),
+        &format!("{}-offline", args.room),
+        my_index,
+    )
+    .await
+    .context("join offline computation")?;
 
     let incoming = incoming.fuse();
     tokio::pin!(incoming);
     tokio::pin!(outgoing);
 
-    let signing = OfflineStage::new(i, args.parties, local_share)?;
+    let signing = OfflineStage::new(my_index, args.parties, local_share)?;
+
     let completed_offline_stage = AsyncProtocol::new(signing, incoming, outgoing)
         .run()
         .await
         .map_err(|e| anyhow!("protocol execution terminated with error: {}", e))?;
 
-    let (i, incoming, outgoing) = join_computation(args.address, &format!("{}-online", args.room))
-        .await
-        .context("join online computation")?;
+    // -------- Online: always join with the same fixed index --------
+    let (incoming, outgoing) = join_computation_with_fixed_index(
+        args.address,
+        &format!("{}-online", args.room),
+        my_index,
+    )
+    .await
+    .context("join online computation")?;
 
     tokio::pin!(incoming);
     tokio::pin!(outgoing);
 
-    //处理输入的数据，按照base64、utf8等方式解码 
-    let data_to_sign=process_data_to_sign(&args_clone)?;
+    // 处理输入的数据，按照 base64/utf8 等方式解码
+    let data_to_sign = process_data_to_sign(&args_clone)?;
 
     let (signing, partial_signature) = SignManual::new(
         BigInt::from_bytes(&data_to_sign),
         completed_offline_stage,
     )?;
 
+    // 注意 sender 必须用 my_index
     outgoing
         .send(Msg {
-            sender: i,
+            sender: my_index,
             receiver: None,
             body: partial_signature,
         })
         .await?;
-    
+
     let partial_signatures: Vec<_> = incoming
         .take(number_of_parties - 1)
         .map_ok(|msg| msg.body)
         .try_collect()
         .await?;
+
     let signature = signing
         .complete(&partial_signatures)
         .context("online stage failed")?;
+
     let signature = serde_json::to_string(&signature).context("serialize signature")?;
-
     Ok(signature)
-
 }
 
 fn process_data_to_sign(args: &Cli)->Result<Vec<u8>>{

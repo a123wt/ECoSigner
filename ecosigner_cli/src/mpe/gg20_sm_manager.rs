@@ -25,6 +25,13 @@ pub struct Cli {
     port: i32
 }
 
+
+impl Cli {
+    pub fn from_port(port: i32) -> Self {
+        Self { port }
+    }
+}
+
 #[rocket::get("/rooms/<room_id>/subscribe")]
 async fn subscribe(
     db: &State<Db>,

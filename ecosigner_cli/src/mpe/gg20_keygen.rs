@@ -8,7 +8,7 @@ use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::state_machine::key
 use round_based::async_runtime::AsyncProtocol;
 
 use super::gg20_sm_client;
-use gg20_sm_client::join_computation;
+use gg20_sm_client::join_computation_with_fixed_index;
 
 #[derive(Debug, StructOpt,Clone)]
 pub struct Cli {
@@ -38,7 +38,7 @@ pub async fn gg20_keygen(args:Cli) -> Result<Point<Secp256k1>> {
         .await
         .context("cannot create output file")?;
 
-    let (_i, incoming, outgoing) = join_computation(args.address, &args.room)
+    let (incoming, outgoing) = join_computation_with_fixed_index(args.address, &args.room, args.index)
         .await
         .context("join computation")?;
 

@@ -157,3 +157,42 @@ async fn gg20_sm_client() -> Result<()> {
     }
     Ok(())
 }
+
+
+
+pub async fn join_computation_with_fixed_index<M>(
+    address: surf::Url,
+    room_id: &str,
+    my_index: u16,
+) -> Result<(
+    impl Stream<Item = Result<Msg<M>>>,
+    impl Sink<Msg<M>, Error = anyhow::Error>,
+)>
+where
+    M: Serialize + DeserializeOwned,
+{
+    let client = SmClient::new(address, room_id).context("construct SmClient")?;
+
+    let incoming = client
+        .subscribe()
+        .await
+        .context("subscribe")?
+        .and_then(|msg| async move {
+            serde_json::from_str::<Msg<M>>(&msg).context("deserialize message")
+        });
+
+    // 用固定 party index 过滤，保证不会把自己消息喂回协议
+    let incoming = incoming.try_filter(move |msg| {
+        futures::future::ready(
+            msg.sender != my_index && (msg.receiver.is_none() || msg.receiver == Some(my_index)),
+        )
+    });
+
+    let outgoing = futures::sink::unfold(client, |client, message: Msg<M>| async move {
+        let serialized = serde_json::to_string(&message).context("serialize message")?;
+        client.broadcast(&serialized).await.context("broadcast message")?;
+        Ok::<_, anyhow::Error>(client)
+    });
+
+    Ok((incoming, outgoing))
+}

@@ -2,46 +2,68 @@
 name = "ecosigner_cli"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+# 配合 lock 文件中的 tokio 1.29 和 rocket rc.3，推荐使用 Rust 1.70.0
+rust-version = "1.70.0"
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-multi-party-ecdsa= {path="../multi-party-ecdsa"}
+# --- 核心依赖 (与 Lock 文件 1:1 精确匹配) ---
+serde = { version = "=1.0.171", features = ["derive"] }
+serde_json = "=1.0.103"
+multi-party-ecdsa = { path = "../multi-party-ecdsa" }
+
+# --- 性能与工具 ---
+criterion = "=0.3.6"
+aes-gcm = "=0.9.4"
+hex = "=0.4.3"
+uuid = { version = "=0.8.2", features = ["v4"] }
+rand = "=0.8.5"
+anyhow = "=1.0.72"     # Lock文件中是 1.0.72
+thiserror = "=1.0.43"  # Lock文件中是 1.0.43 (原配置 1.0.23 较旧)
+structopt = "=0.3.26"
+colored = "=2.0.4"
+ansi_term = "=0.12.1"
+
+# --- 异步运行时 ---
+# Lock 文件明确显示使用 tokio 1.29.1
+tokio = { version = "=1.29.1", default-features = false, features = ["full"] }
+futures = "=0.3.28"
+
+# --- Web 与 HTTP ---
+# !重要修改! Lock 文件显示实际使用的是 rc.3，而非原配置的 rc.1
+rocket = { version = "=0.5.0-rc.3", default-features = false, features = ["json"] }
+
+# Lock 文件确认 reqwest 为 0.9.24 (古老版本)
+reqwest = { version = "=0.9.24", default-features = false }
+surf = "=2.3.2"
+async-sse = "=5.1.0"
+
+# --- 密码学库 ---
+# Lock 文件显示 secp256k1 为 0.27.0
+secp256k1 = { version = "=0.27.0", features = ["global-context"] }
+# Lock 文件显示 round-based 为 0.1.7 (原配置 0.1.4)
+round-based = { version = "=0.1.7", features = ["dev"] }
+curv-kzen = { version = "=0.9.0", default-features = false }
+openssl = "=0.10.55"
+der-parser = { version = "=8.2.0", features = ["serialize"] }
+
+# [[bin]]
+# name = "inter_node_channel"
+# path = "./src/bin/inter_node_communication.rs"
+
+# [[bin]]
+# name = "ecosigner_prepare"
+# path = "./src/bin/ecosigner_prepare.rs"
 
 
-criterion = "0.3"
-aes-gcm = "0.9.4"
-hex = "0.4"
-tokio = { version = "1", default-features = false, features = ["full"] }
-futures = "0.3"
-rocket = { version = "0.5.0-rc.1", default-features = false, features = ["json"] }
-reqwest = { version = "0.9", default-features = false }
-uuid = { version = "0.8", features = ["v4"] }
-rand = "0.8"
-surf = "2"
-async-sse = "5"
-anyhow = "1"
-structopt = "0.3"
-secp256k1 = { version = "0.27", features = ["global-context"] }
-thiserror = "1.0.23"
-round-based = { version = "0.1.4", features = ["dev"] }
-curv-kzen = { version = "0.9", default-features = false }
-colored = "2.0.4"
-ansi_term = "0.12.1"
-openssl = "0.10.55"
-der-parser = {version="8.2.0",features=["serialize"]}
 
 [[bin]]
-name="inter_node_channel"
-path="./src/bin/inter_node_communication.rs"
+name = "node"
+path = "./src/bin/node.rs"
 
 [[bin]]
-name="ecosigner_node"
-path="./src/bin/ecosigner_node.rs"
+name="proxy"
+path="./src/bin/proxy.rs"
 
 [[bin]]
-name="ecosigner_prepare"
-path="./src/bin/ecosigner_prepare.rs"
-
+name="client"
+path="./src/bin/client.rs"

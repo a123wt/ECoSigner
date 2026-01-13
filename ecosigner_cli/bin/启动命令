@@ -1,0 +1,13 @@
+./node --dkg-listen-port 7001 --index 1 --nodes-channel http://0.0.0.0:8000 --signing-listen-port 7101
+./node --dkg-listen-port 7002 --index 2 --nodes-channel http://0.0.0.0:8000 --signing-listen-port 7102
+./node --dkg-listen-port 7003 --index 3 --nodes-channel http://0.0.0.0:8000 --signing-listen-port 7103
+
+
+./node --dkg-listen-port 7001 --index 1 --inter-node-comm http://0.0.0.0:8000 --signing-listen-port 7101
+./node --dkg-listen-port 7002 --index 2 --inter-node-comm http://0.0.0.0:8000 --signing-listen-port 7102
+./node --dkg-listen-port 7003 --index 3 --inter-node-comm http://0.0.0.0:8000 --signing-listen-port 7103
+
+
+./ecosigner_ctl.sh start --root ./run --n 3 --t 1 \
+  --proxy-bin /root/ECoSigner/ecosigner_cli/bin/proxy \
+  --node-bin /root/ECoSigner/ecosigner_cli/bin/node
