@@ -3,6 +3,8 @@ use std::sync::{
     atomic::{AtomicU16, Ordering},
     Arc,
 };
+use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use colored::Colorize;
 use futures::Stream;
@@ -91,6 +93,64 @@ async fn issue_idx(db: &State<Db>, room_id: &str) -> Json<IssuedUniqueIdx> {
     Json::from(IssuedUniqueIdx { unique_idx: idx })
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct FixedIdxReq {
+    idx: u16,
+}
+
+/// v2: issue a deterministic room index for a given stable party id.
+///
+/// - `party_id` is the user-chosen/stable id of the node (e.g. 1,3,...)
+/// - `parties` is the set of participants for THIS computation session.
+///
+/// The manager canonicalizes `parties` (sort+dedup) and assigns
+/// `room_idx = position(party_id in parties) + 1`.
+#[derive(Serialize, Deserialize, Debug)]
+struct PartyIdxReq {
+    party_id: u16,
+    parties: Vec<u16>,
+}
+
+#[rocket::post("/rooms/<room_id>/issue_idx_with_parties", format = "json", data = "<body>")]
+async fn issue_idx_with_parties(
+    db: &State<Db>,
+    room_id: &str,
+    body: Json<PartyIdxReq>,
+) -> std::result::Result<Json<IssuedUniqueIdx>, Status> {
+    let room = db.get_room_or_create_empty(room_id).await;
+    let idx = room
+        .issue_idx_with_parties(body.party_id, body.parties.clone())
+        .await?;
+
+    println!(
+        "{}{}{}{}",
+        "Remote node joined v2, party_id=".green().bold(),
+        body.party_id.to_string().bold(),
+        ", room_idx=".green().bold(),
+        idx.to_string().bold(),
+    );
+
+    Ok(Json::from(IssuedUniqueIdx { unique_idx: idx }))
+}
+
+#[rocket::post("/rooms/<room_id>/issue_fixed_idx", format = "json", data = "<body>")]
+async fn issue_fixed_idx(
+    db: &State<Db>,
+    room_id: &str,
+    body: Json<FixedIdxReq>,
+) -> std::result::Result<Json<IssuedUniqueIdx>, Status> {
+    let room = db.get_room_or_create_empty(room_id).await;
+    let idx = room.try_reserve_fixed_idx(body.idx).await?;
+
+    println!(
+        "{}{}",
+        "Remote node reserved fixed idx ".green().bold(),
+        idx.to_string().bold()
+    );
+
+    Ok(Json::from(IssuedUniqueIdx { unique_idx: idx }))
+}
+
 #[rocket::post("/rooms/<room_id>/broadcast", data = "<message>")]
 async fn broadcast(db: &State<Db>, room_id: &str, message: String) -> Status {
     println!("{}", message);
@@ -108,6 +168,20 @@ struct Room {
     message_appeared: Notify,
     subscribers: AtomicU16,
     next_idx: AtomicU16,
+    // ----------------------
+    // Id model (v2)
+    // ----------------------
+    // We separate:
+    // - party_id: user chosen/stable id (e.g. 1,3)
+    // - room_idx: protocol/runtime index inside THIS room (always 1..k)
+    //
+    // room_idx is derived deterministically from the (canonicalized) party set
+    // so it won't "drift" based on join order.
+    party_set: RwLock<Option<Vec<u16>>>,
+    party_to_room_idx: RwLock<HashMap<u16, u16>>,
+
+    // Legacy: fixed index reservation (kept for compatibility)
+    used_idx: RwLock<HashSet<u16>>,
 }
 
 impl Db {
@@ -147,6 +221,9 @@ impl Room {
             message_appeared: Notify::new(),
             subscribers: AtomicU16::new(0),
             next_idx: AtomicU16::new(1),
+            party_set: RwLock::new(None),
+            party_to_room_idx: RwLock::new(HashMap::new()),
+            used_idx: RwLock::new(HashSet::new()),
         }
     }
 
@@ -172,9 +249,87 @@ impl Room {
         self.next_idx.fetch_add(1, Ordering::SeqCst)
     }
 
+    /// v2: deterministically assign a contiguous room index (1..k) based on the
+    /// canonicalized party set for this room.
+    ///
+    /// This prevents "id drift" even when parties join in different orders,
+    /// and enables signing with subsets like {1,3} by mapping them to room_idx {1,2}
+    /// in sorted party-id order.
+    pub async fn issue_idx_with_parties(
+        &self,
+        party_id: u16,
+        parties: Vec<u16>,
+    ) -> std::result::Result<u16, Status> {
+        if party_id == 0 {
+            return Err(Status::BadRequest);
+        }
+
+        // canonicalize: sort + dedup + validate
+        let mut set = BTreeSet::<u16>::new();
+        for p in parties {
+            if p == 0 {
+                return Err(Status::BadRequest);
+            }
+            set.insert(p);
+        }
+        if set.is_empty() {
+            return Err(Status::BadRequest);
+        }
+        let canonical: Vec<u16> = set.iter().copied().collect();
+        if !set.contains(&party_id) {
+            return Err(Status::BadRequest);
+        }
+
+        // Initialize room party set on first request; otherwise ensure it matches
+        // (same computation session must use the same participant list).
+        {
+            let mut room_party_set = self.party_set.write().await;
+            match &*room_party_set {
+                None => {
+                    *room_party_set = Some(canonical.clone());
+                }
+                Some(existing) => {
+                    if existing != &canonical {
+                        // Different caller is trying to use the same room_id with a different party set
+                        return Err(Status::Conflict);
+                    }
+                }
+            }
+        }
+
+        // Deterministic room index: 1-based position inside canonical list.
+        let room_idx = canonical
+            .iter()
+            .position(|p| *p == party_id)
+            .ok_or(Status::BadRequest)? as u16
+            + 1;
+
+        // Stable mapping (for reconnects); do not allow two different party_ids to claim the same room_idx.
+        let mut map = self.party_to_room_idx.write().await;
+        if let Some(existing) = map.get(&party_id) {
+            return Ok(*existing);
+        }
+        if map.values().any(|v| *v == room_idx) {
+            return Err(Status::Conflict);
+        }
+        map.insert(party_id, room_idx);
+        Ok(room_idx)
+    }
+
     // pub fn leave(&self){
     //     self.subscribers.fetch_sub(1, Ordering::SeqCst);
     // }
+    pub async fn try_reserve_fixed_idx(&self, idx: u16) -> std::result::Result<u16, Status> {
+        if idx == 0 {
+            return Err(Status::BadRequest);
+        }
+        let mut used = self.used_idx.write().await;
+        if used.contains(&idx) {
+            return Err(Status::Conflict);
+        }
+        used.insert(idx);
+        Ok(idx)
+    }
 }
 
 struct Subscription {
@@ -272,7 +427,16 @@ pub async fn gg20_sm_manager(args:Cli) -> Result<(), Box<dyn std::error::Error>>
         .merge(("port", port));
 
     rocket::custom(figment)
-        .mount("/", rocket::routes![subscribe, issue_idx, broadcast])
+        .mount(
+            "/",
+            rocket::routes![
+                subscribe,
+                issue_idx,
+                issue_idx_with_parties,
+                issue_fixed_idx,
+                broadcast
+            ],
+        )
         .manage(Db::empty())
         .launch()
         .await?;

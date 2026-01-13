@@ -11,11 +11,59 @@ use rocket::http::Status;
 use rocket::serde::json::Json;
 use rocket::State;
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 use ecosigner_cli::mpe::gg20_sm_manager;
 
+// -------------------------
+// Frame protocol helpers (Step3)
+// -------------------------
+const MAX_FRAME_SIZE: usize = 10 * 1024 * 1024; // 10MB
+
+async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Option<Vec<u8>>> {
+    let mut len_buf = [0u8; 4];
+    match r.read_exact(&mut len_buf).await {
+        Ok(_) => {}
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                return Ok(None);
+            }
+            return Err(e.into());
+        }
+    }
+
+    let len = u32::from_be_bytes(len_buf) as usize;
+    if len == 0 {
+        return Err(anyhow!("invalid frame length: 0"));
+    }
+    if len > MAX_FRAME_SIZE {
+        return Err(anyhow!("frame too large: {} > {}", len, MAX_FRAME_SIZE));
+    }
+
+    let mut data = vec![0u8; len];
+    r.read_exact(&mut data).await?;
+    Ok(Some(data))
+}
+
+async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, data: &[u8]) -> Result<()> {
+    let len = data.len();
+    if len == 0 {
+        return Err(anyhow!("cannot write empty frame"));
+    }
+    if len > MAX_FRAME_SIZE {
+        return Err(anyhow!("frame too large to write: {} > {}", len, MAX_FRAME_SIZE));
+    }
+
+    let len_buf = (len as u32).to_be_bytes();
+    w.write_all(&len_buf).await?;
+    w.write_all(data).await?;
+    Ok(())
+}
+
+// -------------------------
+// Config structs
+// -------------------------
 #[derive(Debug, Deserialize, Clone)]
 struct ProxyRelayConfig {
     /// 兼容：把 NodesConfig 的字段直接摊平到这里
@@ -35,10 +83,15 @@ struct ProxyRelayConfig {
     timeout_ms: u64,
 }
 
-fn default_proxy_bind() -> String { "0.0.0.0:8080".to_string() }
-fn default_relay_port() -> i32 { 8000 }
-fn default_timeout_ms() -> u64 { 3000 }
-
+fn default_proxy_bind() -> String {
+    "0.0.0.0:8080".to_string()
+}
+fn default_relay_port() -> i32 {
+    8000
+}
+fn default_timeout_ms() -> u64 {
+    3000
+}
 
 #[derive(Clone)]
 struct ProxyState {
@@ -84,10 +137,28 @@ struct FanoutResponse {
     forwarded: Vec<NodeForward>,
 }
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+// 全局计数器（进程内唯一）
+static REQ_SEQ: AtomicU64 = AtomicU64::new(0);
 fn rnd_request_index() -> String {
+    // ms 时间戳
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+
+    // 进程 id（多 proxy 实例也更不容易撞）
+    let pid = std::process::id();
+
+    // 原子递增序号（同 ms 内并发也不撞）
+    let seq = REQ_SEQ.fetch_add(1, Ordering::Relaxed);
+
+    // 随机后缀（跨进程/重启进一步降低概率）
     let mut rng = rand::thread_rng();
-    let number: u32 = rng.gen_range(100..=999);
-    number.to_string()
+    let r: u32 = rng.gen::<u32>();
+
+    format!("{}-{}-{}-{:08x}", now_ms, pid, seq, r)
 }
 
 async fn read_proxy_relay_config(path: &str) -> Result<ProxyRelayConfig> {
@@ -95,12 +166,12 @@ async fn read_proxy_relay_config(path: &str) -> Result<ProxyRelayConfig> {
         .await
         .with_context(|| format!("Failed to read config file: {}", path))?;
 
-    // 先尝试新格式（带 proxy_bind/relay_port/timeout_ms）
+    // 新格式（带 proxy_bind/relay_port/timeout_ms）
     if let Ok(cfg) = serde_json::from_slice::<ProxyRelayConfig>(&buf) {
         return Ok(cfg);
     }
 
-    // 回退：旧格式（只有 NodesConfig）
+    // 旧格式（只有 NodesConfig）
     let nodes = serde_json::from_slice::<NodesConfig>(&buf)
         .context("Failed to parse config as NodesConfig or ProxyRelayConfig")?;
 
@@ -149,7 +220,7 @@ fn pick_nodes(cfg: &NodesConfig, parties: &[u16]) -> Result<Vec<Node>> {
     Ok(nodes)
 }
 
-/// 关键：spawn 前把 Node(ip=surf::Url) 解析成纯 Send 的 SocketAddr
+/// spawn 前把 Node(ip=surf::Url) 解析成纯 Send 的 SocketAddr
 fn resolve_node_addr(node: &Node, port: i32) -> Result<SocketAddr> {
     let host = node
         .ip
@@ -166,7 +237,9 @@ fn resolve_node_addr(node: &Node, port: i32) -> Result<SocketAddr> {
     Ok(addr)
 }
 
-/// 只用 Send 类型：index + SocketAddr + payload
+/// Step3 关键：用 frame 协议转发（与 node 对齐）
+/// - 写：len(u32be)+json
+/// - 读：len(u32be)+response
 async fn forward_tcp(
     node_index: u16,
     addr: SocketAddr,
@@ -175,14 +248,16 @@ async fn forward_tcp(
 ) -> NodeForward {
     let fut = async move {
         let mut stream = TcpStream::connect(addr).await?;
-        stream.write_all(payload.as_bytes()).await?;
 
-        let mut buf = vec![0u8; 64 * 1024];
-        let n = stream.read(&mut buf).await?;
-        if n == 0 {
-            return Err(anyhow!("Empty response"));
-        }
-        Ok::<String, anyhow::Error>(String::from_utf8_lossy(&buf[..n]).to_string())
+        // write frame
+        write_frame(&mut stream, payload.as_bytes()).await?;
+
+        // read frame (single response)
+        let resp = read_frame(&mut stream).await?;
+        let resp = resp.ok_or_else(|| anyhow!("Empty response (EOF)"))?;
+        let raw = String::from_utf8(resp).context("Response not valid utf8")?;
+
+        Ok::<String, anyhow::Error>(raw)
     };
 
     match tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), fut).await {
@@ -206,7 +281,7 @@ async fn forward_tcp(
             node_index,
             ok: false,
             raw: "".to_string(),
-            error: Some(format!("Connect/IO error: {:#}", e)),
+            error: Some(format!("Connect/IO/proto error: {:#}", e)),
         },
         Err(_) => NodeForward {
             node_index,
@@ -301,7 +376,6 @@ async fn sign_proxy(
         let addr = match resolve_node_addr(&node, node.signing_port) {
             Ok(a) => a,
             Err(e) => {
-                // 解析失败也要返回信息
                 tasks.push(tokio::spawn(async move {
                     NodeForward {
                         node_index: idx,
@@ -463,7 +537,6 @@ async fn run_proxy_http(bind: &str, state: ProxyState) -> Result<()> {
 }
 
 async fn run_relay(relay_port: i32) -> Result<()> {
-    // 关键：把 relay_port 转成 sm_manager 的 Cli
     let args = gg20_sm_manager::Cli::from_port(relay_port);
     gg20_sm_manager::gg20_sm_manager(args)
         .await
@@ -473,11 +546,9 @@ async fn run_relay(relay_port: i32) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 默认 config 路径可控（同时支持 env）
     let mut config_path =
         std::env::var("ECOSIGNER_CONFIG").unwrap_or_else(|_| "./config.json".to_string());
 
-    // CLI 覆盖项（可选，不强制）
     let mut bind_override: Option<String> = None;
     let mut relay_port_override: Option<i32> = None;
     let mut timeout_override: Option<u64> = None;
@@ -486,10 +557,30 @@ async fn main() -> Result<()> {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--config" => { i += 1; if i < args.len() { config_path = args[i].clone(); } }
-            "--bind" => { i += 1; if i < args.len() { bind_override = Some(args[i].clone()); } }
-            "--relay-port" => { i += 1; if i < args.len() { relay_port_override = args[i].parse().ok(); } }
-            "--timeout-ms" => { i += 1; if i < args.len() { timeout_override = args[i].parse().ok(); } }
+            "--config" => {
+                i += 1;
+                if i < args.len() {
+                    config_path = args[i].clone();
+                }
+            }
+            "--bind" => {
+                i += 1;
+                if i < args.len() {
+                    bind_override = Some(args[i].clone());
+                }
+            }
+            "--relay-port" => {
+                i += 1;
+                if i < args.len() {
+                    relay_port_override = args[i].parse().ok();
+                }
+            }
+            "--timeout-ms" => {
+                i += 1;
+                if i < args.len() {
+                    timeout_override = args[i].parse().ok();
+                }
+            }
             _ => {}
         }
         i += 1;
@@ -506,11 +597,7 @@ async fn main() -> Result<()> {
         timeout_ms,
     };
 
-    // 并发跑两个 Rocket（两个端口分别提供 proxy/relay）
-    tokio::try_join!(
-        run_proxy_http(&proxy_bind, state),
-        run_relay(relay_port)
-    )?;
+    tokio::try_join!(run_proxy_http(&proxy_bind, state), run_relay(relay_port))?;
 
     Ok(())
 }

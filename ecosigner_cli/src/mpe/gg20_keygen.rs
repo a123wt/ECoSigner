@@ -8,7 +8,7 @@ use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::state_machine::key
 use round_based::async_runtime::AsyncProtocol;
 
 use super::gg20_sm_client;
-use gg20_sm_client::join_computation_with_fixed_index;
+use gg20_sm_client::join_computation_with_parties;
 
 #[derive(Debug, StructOpt,Clone)]
 pub struct Cli {
@@ -38,9 +38,18 @@ pub async fn gg20_keygen(args:Cli) -> Result<Point<Secp256k1>> {
         .await
         .context("cannot create output file")?;
 
-    let (incoming, outgoing) = join_computation_with_fixed_index(args.address, &args.room, args.index)
-        .await
-        .context("join computation")?;
+    // v2 id model: use explicit participant set so room indices are deterministic.
+    // For keygen we assume parties are 1..=number_of_parties.
+    let parties: Vec<u16> = (1..=args.number_of_parties).collect();
+
+    let (_i, incoming, outgoing) = join_computation_with_parties(
+        args.address.clone(),
+        &args.room,
+        args.index,
+        parties,
+    )
+    .await
+    .context("join computation (v2 idx mapping)")?;
 
     let incoming = incoming.fuse();
     tokio::pin!(incoming);

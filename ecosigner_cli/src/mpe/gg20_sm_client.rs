@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use futures::{Sink, Stream, StreamExt, TryStreamExt};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use structopt::StructOpt;
@@ -51,6 +51,16 @@ where
 
     Ok((index, incoming, outgoing))
 }
+#[derive(serde::Serialize)]
+struct FixedIdxReq {
+    idx: u16,
+}
+
+#[derive(serde::Serialize)]
+struct PartyIdxReq {
+    party_id: u16,
+    parties: Vec<u16>,
+}
 
 pub struct SmClient {
     http_client: surf::Client,
@@ -73,6 +83,46 @@ impl SmClient {
             .recv_json::<IssuedUniqueIdx>()
             .await
             .map_err(|e| e.into_inner())?;
+        Ok(response.unique_idx)
+    }
+
+
+
+    pub async fn issue_fixed_idx(&self, idx: u16) -> Result<u16> {
+        let req = self
+            .http_client
+            .post("issue_fixed_idx")
+            .body_json(&FixedIdxReq { idx })
+            .map_err(|e| anyhow!("build request failed: {}", e))?;
+
+        let response = req
+            .recv_json::<IssuedUniqueIdx>()
+            .await
+            .map_err(|e| e.into_inner())
+            .context("issue_fixed_idx recv_json failed")?;
+
+        Ok(response.unique_idx)
+    }
+
+    /// v2: request a deterministic *room index* from sm_manager.
+    ///
+    /// - `party_id` is the stable id of this node (user-chosen)
+    /// - `parties` is the participant set for this session (e.g. [1,3])
+    ///
+    /// Manager will return `room_idx` as 1..k based on sorted `parties`.
+    pub async fn issue_idx_with_parties(&self, party_id: u16, parties: Vec<u16>) -> Result<u16> {
+        let req = self
+            .http_client
+            .post("issue_idx_with_parties")
+            .body_json(&PartyIdxReq { party_id, parties })
+            .map_err(|e| anyhow!("build request failed: {}", e))?;
+
+        let response = req
+            .recv_json::<IssuedUniqueIdx>()
+            .await
+            .map_err(|e| e.into_inner())
+            .context("issue_idx_with_parties recv_json failed")?;
+
         Ok(response.unique_idx)
     }
 
@@ -159,12 +209,12 @@ async fn gg20_sm_client() -> Result<()> {
 }
 
 
-
 pub async fn join_computation_with_fixed_index<M>(
     address: surf::Url,
     room_id: &str,
     my_index: u16,
 ) -> Result<(
+    u16,
     impl Stream<Item = Result<Msg<M>>>,
     impl Sink<Msg<M>, Error = anyhow::Error>,
 )>
@@ -181,10 +231,15 @@ where
             serde_json::from_str::<Msg<M>>(&msg).context("deserialize message")
         });
 
-    // 用固定 party index 过滤，保证不会把自己消息喂回协议
+    // 关键：真正向 manager 申请固定 idx
+    let index = client
+        .issue_fixed_idx(my_index)
+        .await
+        .context("issue fixed index")?;
+
     let incoming = incoming.try_filter(move |msg| {
         futures::future::ready(
-            msg.sender != my_index && (msg.receiver.is_none() || msg.receiver == Some(my_index)),
+            msg.sender != index && (msg.receiver.is_none() || msg.receiver == Some(index)),
         )
     });
 
@@ -194,5 +249,55 @@ where
         Ok::<_, anyhow::Error>(client)
     });
 
-    Ok((incoming, outgoing))
+    Ok((index, incoming, outgoing))
+}
+
+/// v2: join a computation room with a stable `party_id` and an explicit participant set.
+///
+/// The manager deterministically maps `party_id` into a contiguous room index (1..k)
+/// based on sorted `parties`, so: parties=[1,3], party_id=1 -> room_idx=1;
+/// parties=[1,3], party_id=3 -> room_idx=2.
+///
+/// This prevents "id drift" and enables arbitrary subsets.
+pub async fn join_computation_with_parties<M>(
+    address: surf::Url,
+    room_id: &str,
+    party_id: u16,
+    parties: Vec<u16>,
+) -> Result<(
+    u16,
+    impl Stream<Item = Result<Msg<M>>>,
+    impl Sink<Msg<M>, Error = anyhow::Error>,
+)>
+where
+    M: Serialize + DeserializeOwned,
+{
+    let client = SmClient::new(address, room_id).context("construct SmClient")?;
+
+    let incoming = client
+        .subscribe()
+        .await
+        .context("subscribe")?
+        .and_then(|msg| async move {
+            serde_json::from_str::<Msg<M>>(&msg).context("deserialize message")
+        });
+
+    let room_idx = client
+        .issue_idx_with_parties(party_id, parties)
+        .await
+        .context("issue idx with parties")?;
+
+    let incoming = incoming.try_filter(move |msg| {
+        futures::future::ready(
+            msg.sender != room_idx && (msg.receiver.is_none() || msg.receiver == Some(room_idx)),
+        )
+    });
+
+    let outgoing = futures::sink::unfold(client, |client, message: Msg<M>| async move {
+        let serialized = serde_json::to_string(&message).context("serialize message")?;
+        client.broadcast(&serialized).await.context("broadcast message")?;
+        Ok::<_, anyhow::Error>(client)
+    });
+
+    Ok((room_idx, incoming, outgoing))
 }

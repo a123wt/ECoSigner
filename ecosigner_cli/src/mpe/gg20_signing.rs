@@ -20,7 +20,7 @@ use round_based::async_runtime::AsyncProtocol;
 use round_based::Msg;
 
 use super::gg20_sm_client;
-use gg20_sm_client::join_computation_with_fixed_index;
+use gg20_sm_client::join_computation_with_parties;
 
 
 use openssl::base64;
@@ -84,7 +84,9 @@ async fn gg20_signing_original(args:Cli) -> Result<String> {
             "--index must be non-zero (use the node's fixed index, e.g. 1..n) to avoid self-message error"
         ));
     }
-    let my_index = args.index;
+    // Stable id of this node (user-chosen). It can be any u16 > 0,
+    // but must be contained in --parties.
+    let party_id = args.index;
 
     let local_share = tokio::fs::read(args.local_share)
         .await
@@ -93,19 +95,24 @@ async fn gg20_signing_original(args:Cli) -> Result<String> {
     let number_of_parties = args.parties.len();
 
     // -------- Offline: always join with fixed index --------
-    let (incoming, outgoing) = join_computation_with_fixed_index(
+    let (room_idx, incoming, outgoing) = join_computation_with_parties(
         args.address.clone(),
         &format!("{}-offline", args.room),
-        my_index,
+        party_id,
+        args.parties.clone(),
     )
     .await
-    .context("join offline computation")?;
+    .context("join offline computation (v2 idx mapping)")?;
 
     let incoming = incoming.fuse();
     tokio::pin!(incoming);
     tokio::pin!(outgoing);
 
-    let signing = OfflineStage::new(my_index, args.parties, local_share)?;
+    // IMPORTANT:
+    // - `room_idx` is the contiguous (1..k) index used by the state machine/runtime
+    // - `args.parties` keeps the original party ids (e.g. [1,3]) for crypto math
+    //   and must be identical across all participants.
+    let signing = OfflineStage::new(room_idx, args.parties.clone(), local_share)?;
 
     let completed_offline_stage = AsyncProtocol::new(signing, incoming, outgoing)
         .run()
@@ -113,13 +120,21 @@ async fn gg20_signing_original(args:Cli) -> Result<String> {
         .map_err(|e| anyhow!("protocol execution terminated with error: {}", e))?;
 
     // -------- Online: always join with the same fixed index --------
-    let (incoming, outgoing) = join_computation_with_fixed_index(
+    let (room_idx_online, incoming, outgoing) = join_computation_with_parties(
         args.address,
         &format!("{}-online", args.room),
-        my_index,
+        party_id,
+        args.parties.clone(),
     )
     .await
-    .context("join online computation")?;
+    .context("join online computation (v2 idx mapping)")?;
+
+    if room_idx_online != room_idx {
+        return Err(anyhow!(
+            "online stage index mismatch: offline={}, online={}",
+            room_idx, room_idx_online
+        ));
+    }
 
     tokio::pin!(incoming);
     tokio::pin!(outgoing);
@@ -135,7 +150,7 @@ async fn gg20_signing_original(args:Cli) -> Result<String> {
     // 注意 sender 必须用 my_index
     outgoing
         .send(Msg {
-            sender: my_index,
+            sender: room_idx,
             receiver: None,
             body: partial_signature,
         })
