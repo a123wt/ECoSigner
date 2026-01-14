@@ -1,0 +1,320 @@
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=20 THREADS=4 DUR=30s ./bench_proxy.sh wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=4 conn=20 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  4 threads and 20 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   828.05ms  167.91ms   1.98s    76.96%
+    Req/Sec     7.82      5.32    30.00     80.95%
+  717 requests in 31.84s, 538.22KB read
+  Socket errors: connect 0, read 0, write 0, timeout 17
+Requests/sec:     22.52
+Transfer/sec:     16.91KB
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=40 THREADS=4 DUR=30s ./bench_proxy.sh wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=4 conn=40 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  4 threads and 40 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.64s   198.69ms   2.00s    61.52%
+    Req/Sec     8.37      7.14    50.00     79.09%
+  665 requests in 31.76s, 501.23KB read
+  Socket errors: connect 0, read 0, write 0, timeout 153
+Requests/sec:     20.94
+Transfer/sec:     15.78KB
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=10 THREADS=4 DUR=30s ./bench_proxy.sh wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=4 conn=10 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  4 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   393.45ms  106.29ms   1.43s    97.76%
+    Req/Sec     6.11      2.90    10.00     43.52%
+  624 requests in 31.83s, 470.44KB read
+  Socket errors: connect 0, read 0, write 0, timeout 5
+Requests/sec:     19.61
+Transfer/sec:     14.78KB
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=5 THREADS=4 DUR=30s ./bench_proxy.sh
+ wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=4 conn=5 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  4 threads and 5 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   288.20ms  164.44ms   1.98s    95.81%
+    Req/Sec     3.77      1.06     5.00     58.19%
+  464 requests in 31.79s, 349.81KB read
+Requests/sec:     14.60
+Transfer/sec:     11.00KB
+
+
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=5 THREADS=2 DUR=30s ./bench_proxy.sh
+ wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=2 conn=5 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  2 threads and 5 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   259.41ms  126.48ms   1.20s    96.19%
+    Req/Sec     8.84      2.18    10.00     77.15%
+  509 requests in 31.74s, 381.93KB read
+Requests/sec:     16.03
+Transfer/sec:     12.03KB
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=10 THREADS=2 DUR=30s ./bench_proxy.s
+h wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=2 conn=10 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  2 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   487.73ms  140.88ms   1.48s    95.83%
+    Req/Sec    12.54      8.35    40.00     82.71%
+  639 requests in 31.74s, 480.32KB read
+  Socket errors: connect 0, read 0, write 0, timeout 4
+Requests/sec:     20.13
+Transfer/sec:     15.13KB
+
+
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=20 THREADS=2 DUR=30s ./bench_proxy.s
+h wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=2 conn=20 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  2 threads and 20 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   906.80ms  164.03ms   1.91s    71.25%
+    Req/Sec    12.87      8.26    50.00     83.67%
+  657 requests in 31.70s, 495.47KB read
+  Socket errors: connect 0, read 0, write 0, timeout 17
+Requests/sec:     20.72
+Transfer/sec:     15.63KB
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=40 THREADS=2 DUR=30s ./bench_proxy.s
+h wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=2 conn=40 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  2 threads and 40 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.64s   203.01ms   2.00s    63.42%
+    Req/Sec    14.38     10.96    70.00     78.36%
+  675 requests in 31.75s, 509.54KB read
+  Socket errors: connect 0, read 0, write 0, timeout 161
+Requests/sec:     21.26
+Transfer/sec:     16.05KB
+
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=40 THREADS=1 DUR=30s ./bench_proxy.s
+h wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=1 conn=40 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  1 threads and 40 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.72s   178.71ms   2.00s    62.47%
+    Req/Sec    24.28     17.51   121.00     82.79%
+  631 requests in 31.72s, 476.33KB read
+  Socket errors: connect 0, read 0, write 0, timeout 194
+Requests/sec:     19.90
+Transfer/sec:     15.02KB
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=20 THREADS=1 DUR=30s ./bench_proxy.s
+h wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=1 conn=20 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  1 threads and 20 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   932.59ms  205.40ms   1.81s    79.33%
+    Req/Sec    24.08     16.32   130.00     82.54%
+  659 requests in 31.73s, 496.98KB read
+  Socket errors: connect 0, read 0, write 0, timeout 6
+Requests/sec:     20.77
+Transfer/sec:     15.66KB
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=10 THREADS=1 DUR=30s ./bench_proxy.sh wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=1 conn=10 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  1 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   456.41ms  136.49ms   1.40s    95.71%
+    Req/Sec    23.48     13.73    80.00     82.17%
+  689 requests in 31.77s, 517.11KB read
+  Socket errors: connect 0, read 0, write 0, timeout 3
+Requests/sec:     21.69
+Transfer/sec:     16.28KB
+
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=5 THREADS=1 DUR=30s ./bench_proxy.sh wrk sign
+== bench proxy ==
+tool=wrk mode=sign
+url=http://127.0.0.1:8080/sign
+dur=30s threads=1 conn=5 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/sign
+  1 threads and 5 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   342.58ms  278.93ms   1.85s    92.57%
+    Req/Sec    19.05      8.35    40.00     45.98%
+  561 requests in 33.07s, 422.94KB read
+Requests/sec:     16.97
+Transfer/sec:     12.79KB
+
+
+
+##################dkg
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=5 DUR=10s ./bench_proxy.sh wrk dkg
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=10s threads=4 conn=5 qps=500
+
+Running 10s test @ http://127.0.0.1:8080/dkg
+  4 threads and 5 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   276.75ms   57.66ms 428.82ms   69.01%
+    Req/Sec     3.65      1.35    10.00     83.80%
+  142 requests in 10.02s, 163.85KB read
+Requests/sec:     14.17
+Transfer/sec:     16.35KB
+
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=10 THREADS=4 DUR=30s ./bench_proxy.s
+h wrk dkg
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=30s threads=4 conn=10 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/dkg
+  4 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   571.31ms  195.72ms   1.64s    85.45%
+    Req/Sec     4.37      2.98    10.00     70.42%
+  438 requests in 31.87s, 503.75KB read
+  Socket errors: connect 0, read 0, write 0, timeout 2
+Requests/sec:     13.74
+Transfer/sec:     15.81KB
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=5 THREADS=1 DUR=30s ./bench_proxy.sh
+ wrk dkg
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=30s threads=1 conn=5 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/dkg
+  1 threads and 5 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   390.13ms  207.94ms   1.84s    93.88%
+    Req/Sec    15.05      8.36    40.00     78.60%
+  425 requests in 32.05s, 487.22KB read
+  Socket errors: connect 0, read 0, write 0, timeout 1
+Requests/sec:     13.26
+Transfer/sec:     15.20KB
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=10 THREADS=1 DUR=30s ./bench_proxy.s
+h wrk dkg 
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=30s threads=1 conn=10 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/dkg
+  1 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   630.63ms  173.63ms   1.86s    72.53%
+    Req/Sec    17.27     10.66    59.00     71.11%
+  474 requests in 31.84s, 547.58KB read
+  Socket errors: connect 0, read 0, write 0, timeout 9
+Requests/sec:     14.89
+Transfer/sec:     17.20KB
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=10 THREADS=2 DUR=30s ./bench_proxy.s
+h wrk dkg
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=30s threads=2 conn=10 qps=500
+
+
+Running 30s test @ http://127.0.0.1:8080/dkg
+  2 threads and 10 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   691.03ms  216.36ms   1.82s    80.13%
+    Req/Sec     8.90      5.40    30.00     74.53%
+  444 requests in 31.75s, 513.46KB read
+  Socket errors: connect 0, read 0, write 0, timeout 5
+Requests/sec:     13.99
+Transfer/sec:     16.17KB
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=5 THREADS=2 DUR=30s ./bench_proxy.sh
+ wrk dkg
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=30s threads=2 conn=5 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/dkg
+  2 threads and 5 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   337.63ms  125.26ms   1.20s    84.64%
+    Req/Sec     6.79      2.83    10.00     47.85%
+  369 requests in 31.79s, 426.22KB read
+  Socket errors: connect 0, read 0, write 0, timeout 2
+Requests/sec:     11.61
+Transfer/sec:     13.41KB
