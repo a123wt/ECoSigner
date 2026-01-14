@@ -101,9 +101,9 @@ Connection: close\r\n\
         Ok::<Vec<u8>, anyhow::Error>(buf)
     };
 
-    let buf = tokio::time::timeout(std::time::Duration::from_secs(10), read_fut)
+    let buf = tokio::time::timeout(std::time::Duration::from_secs(30), read_fut)
         .await
-        .map_err(|_| anyhow!("Read timeout (10s). Is proxy responding?"))??;
+        .map_err(|_| anyhow!("Read timeout (30s). Is proxy responding?"))??;
 
     if buf.is_empty() {
         return Err(anyhow!(

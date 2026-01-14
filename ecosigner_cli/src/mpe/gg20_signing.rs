@@ -1,6 +1,13 @@
 // use std::io::Write;
 // use std::ops::Add;
-use std::path::PathBuf;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use tokio::sync::{OnceCell, RwLock};
+
 
 use anyhow::{anyhow, Context, Result};
 use curv::elliptic::curves::Scalar;
@@ -75,6 +82,31 @@ pub struct Cli {
     pub output_data_type:DataType,
 }
 
+static SHARE_BYTES_CACHE: OnceCell<RwLock<HashMap<PathBuf, Arc<Vec<u8>>>>> = OnceCell::const_new();
+
+async fn read_share_bytes_cached(path: &Path) -> Result<Arc<Vec<u8>>> {
+    let cache: &RwLock<HashMap<PathBuf, Arc<Vec<u8>>>> = SHARE_BYTES_CACHE
+        .get_or_init(|| async { RwLock::new(HashMap::new()) })
+        .await;
+
+    {
+        let g = cache.read().await;
+        if let Some(v) = g.get(path) {
+            return Ok(v.clone());
+        }
+    }
+
+    let bytes = tokio::fs::read(path)
+        .await
+        .with_context(|| format!("cannot read local share: {:?}", path))?;
+    let bytes = Arc::new(bytes);
+
+    let mut g = cache.write().await;
+    let entry = g.entry(path.to_path_buf()).or_insert_with(|| bytes.clone());
+    Ok(entry.clone())
+}
+
+
 
 async fn gg20_signing_original(args:Cli) -> Result<String> {
     let args_clone = args.clone();
@@ -88,10 +120,10 @@ async fn gg20_signing_original(args:Cli) -> Result<String> {
     // but must be contained in --parties.
     let party_id = args.index;
 
-    let local_share = tokio::fs::read(args.local_share)
-        .await
-        .context("cannot read local share")?;
-    let local_share = serde_json::from_slice(&local_share).context("parse local share")?;
+    let local_share_bytes = read_share_bytes_cached(&args.local_share).await?;
+    let local_share = serde_json::from_slice(local_share_bytes.as_slice())
+        .context("parse local share")?;
+
     let number_of_parties = args.parties.len();
 
     // -------- Offline: always join with fixed index --------
