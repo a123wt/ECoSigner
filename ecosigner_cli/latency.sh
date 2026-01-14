@@ -91,7 +91,7 @@ JSON
   curl_rc=0
   out_line="$(curl -sS -o /dev/null \
       --connect-timeout 3 \
-      --max-time 60 \
+      --max-time 120 \
       -w "%{http_code} %{time_total}\n" \
       -H "Content-Type: application/json" \
       -X POST \
