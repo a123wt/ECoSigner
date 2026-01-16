@@ -318,3 +318,113 @@ Running 30s test @ http://127.0.0.1:8080/dkg
   Socket errors: connect 0, read 0, write 0, timeout 2
 Requests/sec:     11.61
 Transfer/sec:     13.41KB
+
+#####################################
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=20 THREADS=4 DUR=30s ./bench_proxy.sh  wrk dkg
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=30s threads=4 conn=20 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/dkg
+  4 threads and 20 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.46s   306.68ms   2.00s    60.24%
+    Req/Sec     5.23      4.97    30.00     90.65%
+  381 requests in 31.04s, 436.97KB read
+  Socket errors: connect 0, read 0, write 0, timeout 54
+Requests/sec:     12.28
+Transfer/sec:     14.08KB
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=40 THREADS=4 DUR=30s ./bench_proxy.sh  wrk dkg
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=30s threads=4 conn=40 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/dkg
+  4 threads and 40 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.53s   312.77ms   1.99s    68.00%
+    Req/Sec     8.14      8.11    50.00     68.56%
+  377 requests in 31.01s, 432.83KB read
+  Socket errors: connect 0, read 0, write 0, timeout 327
+Requests/sec:     12.16
+Transfer/sec:     13.96KB
+
+
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=20 THREADS=2 DUR=30s ./bench_proxy.sh  wrk dkg
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=30s threads=2 conn=20 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/dkg
+  2 threads and 20 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.34s   299.06ms   1.99s    67.99%
+    Req/Sec     9.30      6.55    40.00     75.08%
+  415 requests in 31.00s, 476.46KB read
+  Socket errors: connect 0, read 0, write 0, timeout 37
+Requests/sec:     13.39
+Transfer/sec:     15.37KB
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=40 THREADS=2 DUR=30s ./bench_proxy.sh  wrk dkg
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=30s threads=2 conn=40 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/dkg
+  2 threads and 40 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.47s   275.22ms   1.97s    64.15%
+    Req/Sec    15.66     15.71    70.00     88.24%
+  370 requests in 30.99s, 424.96KB read
+  Socket errors: connect 0, read 0, write 0, timeout 317
+Requests/sec:     11.94
+Transfer/sec:     13.71KB
+
+
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=20 THREADS=1 DUR=30s ./bench_proxy.sh  wrk dkg
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=30s threads=1 conn=20 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/dkg
+  1 threads and 20 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.30s   317.93ms   1.99s    64.36%
+    Req/Sec    17.79     16.33    90.00     85.79%
+  430 requests in 30.99s, 493.70KB read
+  Socket errors: connect 0, read 0, write 0, timeout 40
+Requests/sec:     13.88
+Transfer/sec:     15.93KB
+
+
+
+root@d59f343b5826:~/ECoSigner/ecosigner_cli# CONN=40 THREADS=1 DUR=30s ./bench_proxy.sh  wrk dkg
+== bench proxy ==
+tool=wrk mode=dkg
+url=http://127.0.0.1:8080/dkg
+dur=30s threads=1 conn=40 qps=500
+
+Running 30s test @ http://127.0.0.1:8080/dkg
+  1 threads and 40 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.49s   305.58ms   1.96s    56.90%
+    Req/Sec    22.32     24.15   131.00     87.67%
+  387 requests in 30.47s, 444.56KB read
+  Socket errors: connect 0, read 0, write 0, timeout 329
+Requests/sec:     12.70
+Transfer/sec:     14.59KB
+
+
